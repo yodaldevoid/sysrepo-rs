@@ -3,9 +3,13 @@
 //   sr_get_items
 //
 
+#[path = "../example_utils.rs"]
+mod utils;
+
 use std::env;
 
 use sysrepo::*;
+
 use utils::print_val;
 
 /// Show help.

@@ -3,11 +3,15 @@
 //   oper_data
 //
 
+#[path = "../example_utils.rs"]
+mod utils;
+
 use std::env;
 use std::thread;
 use std::time;
 
 use sysrepo::*;
+
 use utils::*;
 
 /// Show help.
@@ -76,7 +80,7 @@ fn run() -> bool {
             let val2 = LydValue::from_string("1052".to_string());
 
             let parent = LibYang::lyd_new_path(None, Some(ctx), &path1, Some(&val1), 0).unwrap();
-            LibYang::lyd_new_path(Some(&parent), None, &path2, Some(&val2), 0);
+            LibYang::lyd_new_path(Some(&parent), None, &path2, Some(&val2), 0).unwrap();
 
             Some(parent)
         } else {

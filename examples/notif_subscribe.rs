@@ -3,11 +3,16 @@
 //   notif_subscribe
 //
 
+#[path = "../example_utils.rs"]
+mod utils;
+
 use std::env;
 use std::thread;
 use std::time;
 
 use sysrepo::*;
+use yang::ffi::timespec;
+
 use utils::*;
 
 /// Show help.

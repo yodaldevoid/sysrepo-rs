@@ -3,12 +3,16 @@
 //   application_changes
 //
 
+#[path = "../example_utils.rs"]
+mod utils;
+
 use std::env;
 use std::ffi::CStr;
 use std::thread;
 use std::time;
 
 use sysrepo::*;
+
 use utils::*;
 
 /// Show help.
@@ -21,25 +25,26 @@ fn print_help(program: &str) {
 
 /// Print change.
 fn print_change(oper: SrChangeOper, old_val: SrValue, new_val: SrValue) {
-    let old_val: &sr_val_t = unsafe { &*old_val.value() };
-    let new_val: &sr_val_t = unsafe { &*new_val.value() };
+    let old_val = unsafe { old_val.value().as_ref() };
+    let new_val = unsafe { new_val.value().as_ref() };
 
     match oper {
         SrChangeOper::Created => {
             print!("CREATED: ");
-            print_val(&new_val);
+            print_val(new_val.unwrap());
         }
         SrChangeOper::Deleted => {
             print!("DELETED: ");
-            print_val(&old_val);
+            print_val(old_val.unwrap());
         }
         SrChangeOper::Modified => {
             print!("MODIFIED: ");
-            print_val(&old_val);
+            print_val(old_val.unwrap());
             print!("to ");
-            print_val(&new_val);
+            print_val(new_val.unwrap());
         }
         SrChangeOper::Moved => {
+            let new_val = new_val.unwrap();
             let xpath = unsafe { CStr::from_ptr(new_val.xpath).to_str().unwrap() };
             println!("MOVED: {}", xpath);
         }

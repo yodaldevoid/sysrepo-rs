@@ -7,8 +7,8 @@ use std::env;
 use std::sync::Arc;
 
 use sysrepo::*;
-use yang2::context::{Context, ContextFlags};
-use yang2::data::{Data, DataFormat, DataPrinterFlags};
+use yang::context::{Context, ContextFlags};
+use yang::data::{Data, DataFormat, DataPrinterFlags};
 
 /// Show help.
 fn print_help(program: &str) {

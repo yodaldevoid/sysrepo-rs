@@ -1,9 +1,3 @@
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
-
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ffi::CStr;
@@ -17,138 +11,144 @@ use std::slice;
 use std::time::Duration;
 use std::sync::Arc;
 
-use libc;
+#[cfg(feature = "yang2")]
+pub use yang2 as yang;
+#[cfg(feature = "yang3")]
+pub use yang3 as yang;
 
-use yang2::data::DataTree;
-use yang2::utils::Binding;
-use yang2::context::Context;
+use libc::{self, size_t};
+pub use sysrepo_sys as ffi;
+use yang::context::Context;
+use yang::data::DataTree;
+use yang::ffi::timespec;
+use yang::utils::Binding;
 
 /// Error.
 #[derive(Copy, Clone)]
 pub enum SrError {
-    Ok = sr_error_t_SR_ERR_OK as isize,
-    InvalArg = sr_error_t_SR_ERR_INVAL_ARG as isize,
-    Ly = sr_error_t_SR_ERR_LY as isize,
-    Sys = sr_error_t_SR_ERR_SYS as isize,
-    NoMemory = sr_error_t_SR_ERR_NO_MEMORY as isize,
-    NotFound = sr_error_t_SR_ERR_NOT_FOUND as isize,
-    Exists = sr_error_t_SR_ERR_EXISTS as isize,
-    Internal = sr_error_t_SR_ERR_INTERNAL as isize,
-    Unsupported = sr_error_t_SR_ERR_UNSUPPORTED as isize,
-    ValidationFailed = sr_error_t_SR_ERR_VALIDATION_FAILED as isize,
-    OperationFailed = sr_error_t_SR_ERR_OPERATION_FAILED as isize,
-    Unauthorized = sr_error_t_SR_ERR_UNAUTHORIZED as isize,
-    Locked = sr_error_t_SR_ERR_LOCKED as isize,
-    TimeOut = sr_error_t_SR_ERR_TIME_OUT as isize,
-    CallbackFailed = sr_error_t_SR_ERR_CALLBACK_FAILED as isize,
-    CallbackShelve = sr_error_t_SR_ERR_CALLBACK_SHELVE as isize,
+    Ok = ffi::sr_error_t::SR_ERR_OK as isize,
+    InvalArg = ffi::sr_error_t::SR_ERR_INVAL_ARG as isize,
+    Ly = ffi::sr_error_t::SR_ERR_LY as isize,
+    Sys = ffi::sr_error_t::SR_ERR_SYS as isize,
+    NoMemory = ffi::sr_error_t::SR_ERR_NO_MEMORY as isize,
+    NotFound = ffi::sr_error_t::SR_ERR_NOT_FOUND as isize,
+    Exists = ffi::sr_error_t::SR_ERR_EXISTS as isize,
+    Internal = ffi::sr_error_t::SR_ERR_INTERNAL as isize,
+    Unsupported = ffi::sr_error_t::SR_ERR_UNSUPPORTED as isize,
+    ValidationFailed = ffi::sr_error_t::SR_ERR_VALIDATION_FAILED as isize,
+    OperationFailed = ffi::sr_error_t::SR_ERR_OPERATION_FAILED as isize,
+    Unauthorized = ffi::sr_error_t::SR_ERR_UNAUTHORIZED as isize,
+    Locked = ffi::sr_error_t::SR_ERR_LOCKED as isize,
+    TimeOut = ffi::sr_error_t::SR_ERR_TIME_OUT as isize,
+    CallbackFailed = ffi::sr_error_t::SR_ERR_CALLBACK_FAILED as isize,
+    CallbackShelve = ffi::sr_error_t::SR_ERR_CALLBACK_SHELVE as isize,
 }
 
 /// Log level.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum SrLogLevel {
-    None = sr_log_level_t_SR_LL_NONE as isize,
-    Error = sr_log_level_t_SR_LL_ERR as isize,
-    Warn = sr_log_level_t_SR_LL_WRN as isize,
-    Info = sr_log_level_t_SR_LL_INF as isize,
-    Debug = sr_log_level_t_SR_LL_DBG as isize,
+    None = ffi::sr_log_level_t::SR_LL_NONE as isize,
+    Error = ffi::sr_log_level_t::SR_LL_ERR as isize,
+    Warn = ffi::sr_log_level_t::SR_LL_WRN as isize,
+    Info = ffi::sr_log_level_t::SR_LL_INF as isize,
+    Debug = ffi::sr_log_level_t::SR_LL_DBG as isize,
 }
 
 /// Conn Flag.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum SrConnFlag {
-    Default = sr_conn_flag_t_SR_CONN_DEFAULT as isize,
-    CacheRunning = sr_conn_flag_t_SR_CONN_CACHE_RUNNING as isize,
+    Default = ffi::sr_conn_flag_t::SR_CONN_DEFAULT as isize,
+    CacheRunning = ffi::sr_conn_flag_t::SR_CONN_CACHE_RUNNING as isize,
 }
 
 /// Datastore.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum SrDatastore {
-    Startup = sr_datastore_t_SR_DS_STARTUP as isize,
-    Running = sr_datastore_t_SR_DS_RUNNING as isize,
-    Candidate = sr_datastore_t_SR_DS_CANDIDATE as isize,
-    Operational = sr_datastore_t_SR_DS_OPERATIONAL as isize,
+    Startup = ffi::sr_datastore_t::SR_DS_STARTUP as isize,
+    Running = ffi::sr_datastore_t::SR_DS_RUNNING as isize,
+    Candidate = ffi::sr_datastore_t::SR_DS_CANDIDATE as isize,
+    Operational = ffi::sr_datastore_t::SR_DS_OPERATIONAL as isize,
 }
 
 /// Sysrepo Type.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum SrType {
-    Unknown = sr_val_type_t_SR_UNKNOWN_T as isize,
-    List = sr_val_type_t_SR_LIST_T as isize,
-    Container = sr_val_type_t_SR_CONTAINER_T as isize,
-    ContainerPresence = sr_val_type_t_SR_CONTAINER_PRESENCE_T as isize,
-    LeafEmpty = sr_val_type_t_SR_LEAF_EMPTY_T as isize,
-    Notification = sr_val_type_t_SR_NOTIFICATION_T as isize,
-    Binary = sr_val_type_t_SR_BINARY_T as isize,
-    Bits = sr_val_type_t_SR_BITS_T as isize,
-    Bool = sr_val_type_t_SR_BOOL_T as isize,
-    Decimal64 = sr_val_type_t_SR_DECIMAL64_T as isize,
-    Enum = sr_val_type_t_SR_ENUM_T as isize,
-    IdentityRef = sr_val_type_t_SR_IDENTITYREF_T as isize,
-    InstanceId = sr_val_type_t_SR_INSTANCEID_T as isize,
-    Int8 = sr_val_type_t_SR_INT8_T as isize,
-    Int16 = sr_val_type_t_SR_INT16_T as isize,
-    Int32 = sr_val_type_t_SR_INT32_T as isize,
-    Int64 = sr_val_type_t_SR_INT64_T as isize,
-    String = sr_val_type_t_SR_STRING_T as isize,
-    UInt8 = sr_val_type_t_SR_UINT8_T as isize,
-    UInt16 = sr_val_type_t_SR_UINT16_T as isize,
-    UInt32 = sr_val_type_t_SR_UINT32_T as isize,
-    UInt64 = sr_val_type_t_SR_UINT64_T as isize,
-    AnyXml = sr_val_type_t_SR_ANYXML_T as isize,
-    AnyData = sr_val_type_t_SR_ANYDATA_T as isize,
+    Unknown = ffi::sr_val_type_t::SR_UNKNOWN_T as isize,
+    List = ffi::sr_val_type_t::SR_LIST_T as isize,
+    Container = ffi::sr_val_type_t::SR_CONTAINER_T as isize,
+    ContainerPresence = ffi::sr_val_type_t::SR_CONTAINER_PRESENCE_T as isize,
+    LeafEmpty = ffi::sr_val_type_t::SR_LEAF_EMPTY_T as isize,
+    Notification = ffi::sr_val_type_t::SR_NOTIFICATION_T as isize,
+    Binary = ffi::sr_val_type_t::SR_BINARY_T as isize,
+    Bits = ffi::sr_val_type_t::SR_BITS_T as isize,
+    Bool = ffi::sr_val_type_t::SR_BOOL_T as isize,
+    Decimal64 = ffi::sr_val_type_t::SR_DECIMAL64_T as isize,
+    Enum = ffi::sr_val_type_t::SR_ENUM_T as isize,
+    IdentityRef = ffi::sr_val_type_t::SR_IDENTITYREF_T as isize,
+    InstanceId = ffi::sr_val_type_t::SR_INSTANCEID_T as isize,
+    Int8 = ffi::sr_val_type_t::SR_INT8_T as isize,
+    Int16 = ffi::sr_val_type_t::SR_INT16_T as isize,
+    Int32 = ffi::sr_val_type_t::SR_INT32_T as isize,
+    Int64 = ffi::sr_val_type_t::SR_INT64_T as isize,
+    String = ffi::sr_val_type_t::SR_STRING_T as isize,
+    UInt8 = ffi::sr_val_type_t::SR_UINT8_T as isize,
+    UInt16 = ffi::sr_val_type_t::SR_UINT16_T as isize,
+    UInt32 = ffi::sr_val_type_t::SR_UINT32_T as isize,
+    UInt64 = ffi::sr_val_type_t::SR_UINT64_T as isize,
+    AnyXml = ffi::sr_val_type_t::SR_ANYXML_T as isize,
+    AnyData = ffi::sr_val_type_t::SR_ANYDATA_T as isize,
 }
 
 /// Get Oper Flag.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum SrGetOperFlag {
-    Default = sr_get_oper_flag_t_SR_OPER_DEFAULT as isize,
-    NoState = sr_get_oper_flag_t_SR_OPER_NO_STATE as isize,
-    NoConfig = sr_get_oper_flag_t_SR_OPER_NO_CONFIG as isize,
-    NoSubs = sr_get_oper_flag_t_SR_OPER_NO_SUBS as isize,
-    NoStored = sr_get_oper_flag_t_SR_OPER_NO_STORED as isize,
-    WithOrigin = sr_get_oper_flag_t_SR_OPER_WITH_ORIGIN as isize,
+    Default = ffi::sr_get_oper_flag_t::SR_OPER_DEFAULT as isize,
+    NoState = ffi::sr_get_oper_flag_t::SR_OPER_NO_STATE as isize,
+    NoConfig = ffi::sr_get_oper_flag_t::SR_OPER_NO_CONFIG as isize,
+    NoSubs = ffi::sr_get_oper_flag_t::SR_OPER_NO_SUBS as isize,
+    NoStored = ffi::sr_get_oper_flag_t::SR_OPER_NO_STORED as isize,
+    WithOrigin = ffi::sr_get_oper_flag_t::SR_OPER_WITH_ORIGIN as isize,
 }
 
 /// Edit Flag.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum SrEditFlag {
-    Default = sr_edit_flag_t_SR_EDIT_DEFAULT as isize,
-    NonRecursive = sr_edit_flag_t_SR_EDIT_NON_RECURSIVE as isize,
-    Strict = sr_edit_flag_t_SR_EDIT_STRICT as isize,
-    Isolate = sr_edit_flag_t_SR_EDIT_ISOLATE as isize,
+    Default = ffi::sr_edit_flag_t::SR_EDIT_DEFAULT as isize,
+    NonRecursive = ffi::sr_edit_flag_t::SR_EDIT_NON_RECURSIVE as isize,
+    Strict = ffi::sr_edit_flag_t::SR_EDIT_STRICT as isize,
+    Isolate = ffi::sr_edit_flag_t::SR_EDIT_ISOLATE as isize,
 }
 
 /// Move Position.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum SrMovePosition {
-    Before = sr_move_position_t_SR_MOVE_BEFORE as isize,
-    After = sr_move_position_t_SR_MOVE_AFTER as isize,
-    First = sr_move_position_t_SR_MOVE_FIRST as isize,
-    Last = sr_move_position_t_SR_MOVE_LAST as isize,
+    Before = ffi::sr_move_position_t::SR_MOVE_BEFORE as isize,
+    After = ffi::sr_move_position_t::SR_MOVE_AFTER as isize,
+    First = ffi::sr_move_position_t::SR_MOVE_FIRST as isize,
+    Last = ffi::sr_move_position_t::SR_MOVE_LAST as isize,
 }
 
 /// Subscribe Flag.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum SrSubcribeFlag {
-    Default = sr_subscr_flag_t_SR_SUBSCR_DEFAULT as isize,
-    NoThread = sr_subscr_flag_t_SR_SUBSCR_NO_THREAD as isize,
-    Passive = sr_subscr_flag_t_SR_SUBSCR_PASSIVE as isize,
-    DoneOnly = sr_subscr_flag_t_SR_SUBSCR_DONE_ONLY as isize,
-    Enabled = sr_subscr_flag_t_SR_SUBSCR_ENABLED as isize,
-    Update = sr_subscr_flag_t_SR_SUBSCR_UPDATE as isize,
-    OperMerge = sr_subscr_flag_t_SR_SUBSCR_OPER_MERGE as isize,
+    Default = ffi::sr_subscr_flag_t::SR_SUBSCR_DEFAULT as isize,
+    NoThread = ffi::sr_subscr_flag_t::SR_SUBSCR_NO_THREAD as isize,
+    Passive = ffi::sr_subscr_flag_t::SR_SUBSCR_PASSIVE as isize,
+    DoneOnly = ffi::sr_subscr_flag_t::SR_SUBSCR_DONE_ONLY as isize,
+    Enabled = ffi::sr_subscr_flag_t::SR_SUBSCR_ENABLED as isize,
+    Update = ffi::sr_subscr_flag_t::SR_SUBSCR_UPDATE as isize,
+    OperMerge = ffi::sr_subscr_flag_t::SR_SUBSCR_OPER_MERGE as isize,
 }
 
 /// Event.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum SrEvent {
-    Update = sr_event_t_SR_EV_UPDATE as isize,
-    Change = sr_event_t_SR_EV_CHANGE as isize,
-    Done = sr_event_t_SR_EV_DONE as isize,
-    Abort = sr_event_t_SR_EV_ABORT as isize,
-    Enabled = sr_event_t_SR_EV_ENABLED as isize,
-    Rpc = sr_event_t_SR_EV_RPC as isize,
+    Update = ffi::sr_event_t::SR_EV_UPDATE as isize,
+    Change = ffi::sr_event_t::SR_EV_CHANGE as isize,
+    Done = ffi::sr_event_t::SR_EV_DONE as isize,
+    Abort = ffi::sr_event_t::SR_EV_ABORT as isize,
+    Enabled = ffi::sr_event_t::SR_EV_ENABLED as isize,
+    Rpc = ffi::sr_event_t::SR_EV_RPC as isize,
 }
 
 impl TryFrom<u32> for SrEvent {
@@ -156,12 +156,12 @@ impl TryFrom<u32> for SrEvent {
 
     fn try_from(t: u32) -> Result<Self, Self::Error> {
         match t {
-            sr_event_t_SR_EV_UPDATE => Ok(SrEvent::Update),
-            sr_event_t_SR_EV_CHANGE => Ok(SrEvent::Change),
-            sr_event_t_SR_EV_DONE => Ok(SrEvent::Done),
-            sr_event_t_SR_EV_ABORT => Ok(SrEvent::Abort),
-            sr_event_t_SR_EV_ENABLED => Ok(SrEvent::Enabled),
-            sr_event_t_SR_EV_RPC => Ok(SrEvent::Rpc),
+            ffi::sr_event_t::SR_EV_UPDATE => Ok(SrEvent::Update),
+            ffi::sr_event_t::SR_EV_CHANGE => Ok(SrEvent::Change),
+            ffi::sr_event_t::SR_EV_DONE => Ok(SrEvent::Done),
+            ffi::sr_event_t::SR_EV_ABORT => Ok(SrEvent::Abort),
+            ffi::sr_event_t::SR_EV_ENABLED => Ok(SrEvent::Enabled),
+            ffi::sr_event_t::SR_EV_RPC => Ok(SrEvent::Rpc),
             _ => Err("Invalid SrEvent"),
         }
     }
@@ -184,10 +184,10 @@ impl fmt::Display for SrEvent {
 /// Change Oper.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum SrChangeOper {
-    Created = sr_change_oper_t_SR_OP_CREATED as isize,
-    Modified = sr_change_oper_t_SR_OP_MODIFIED as isize,
-    Deleted = sr_change_oper_t_SR_OP_DELETED as isize,
-    Moved = sr_change_oper_t_SR_OP_MOVED as isize,
+    Created = ffi::sr_change_oper_t::SR_OP_CREATED as isize,
+    Modified = ffi::sr_change_oper_t::SR_OP_MODIFIED as isize,
+    Deleted = ffi::sr_change_oper_t::SR_OP_DELETED as isize,
+    Moved = ffi::sr_change_oper_t::SR_OP_MOVED as isize,
 }
 
 impl TryFrom<u32> for SrChangeOper {
@@ -195,10 +195,10 @@ impl TryFrom<u32> for SrChangeOper {
 
     fn try_from(t: u32) -> Result<Self, Self::Error> {
         match t {
-            sr_change_oper_t_SR_OP_CREATED => Ok(SrChangeOper::Created),
-            sr_change_oper_t_SR_OP_MODIFIED => Ok(SrChangeOper::Modified),
-            sr_change_oper_t_SR_OP_DELETED => Ok(SrChangeOper::Deleted),
-            sr_change_oper_t_SR_OP_MOVED => Ok(SrChangeOper::Moved),
+            ffi::sr_change_oper_t::SR_OP_CREATED => Ok(SrChangeOper::Created),
+            ffi::sr_change_oper_t::SR_OP_MODIFIED => Ok(SrChangeOper::Modified),
+            ffi::sr_change_oper_t::SR_OP_DELETED => Ok(SrChangeOper::Deleted),
+            ffi::sr_change_oper_t::SR_OP_MOVED => Ok(SrChangeOper::Moved),
             _ => Err("Invalid SrChangeOper"),
         }
     }
@@ -219,13 +219,13 @@ impl fmt::Display for SrChangeOper {
 /// Notification Type.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum SrNotifType {
-    Realtime = sr_ev_notif_type_t_SR_EV_NOTIF_REALTIME as isize,
-    Replay = sr_ev_notif_type_t_SR_EV_NOTIF_REPLAY as isize,
-    ReplayComplete = sr_ev_notif_type_t_SR_EV_NOTIF_REPLAY_COMPLETE as isize,
-    Terminated = sr_ev_notif_type_t_SR_EV_NOTIF_TERMINATED as isize,
-    Modified = sr_ev_notif_type_t_SR_EV_NOTIF_MODIFIED as isize,
-    Suspended = sr_ev_notif_type_t_SR_EV_NOTIF_SUSPENDED as isize,
-    Resumed = sr_ev_notif_type_t_SR_EV_NOTIF_RESUMED as isize,
+    Realtime = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REALTIME as isize,
+    Replay = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY as isize,
+    ReplayComplete = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY_COMPLETE as isize,
+    Terminated = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_TERMINATED as isize,
+    Modified = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_MODIFIED as isize,
+    Suspended = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED as isize,
+    Resumed = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED as isize,
 }
 
 impl TryFrom<u32> for SrNotifType {
@@ -233,13 +233,13 @@ impl TryFrom<u32> for SrNotifType {
 
     fn try_from(t: u32) -> Result<Self, Self::Error> {
         match t {
-            sr_ev_notif_type_t_SR_EV_NOTIF_REALTIME => Ok(SrNotifType::Realtime),
-            sr_ev_notif_type_t_SR_EV_NOTIF_REPLAY => Ok(SrNotifType::Replay),
-            sr_ev_notif_type_t_SR_EV_NOTIF_REPLAY_COMPLETE => Ok(SrNotifType::ReplayComplete),
-            sr_ev_notif_type_t_SR_EV_NOTIF_TERMINATED => Ok(SrNotifType::Terminated),
-            sr_ev_notif_type_t_SR_EV_NOTIF_MODIFIED => Ok(SrNotifType::Modified),
-            sr_ev_notif_type_t_SR_EV_NOTIF_SUSPENDED => Ok(SrNotifType::Suspended),
-            sr_ev_notif_type_t_SR_EV_NOTIF_RESUMED => Ok(SrNotifType::Resumed),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REALTIME => Ok(SrNotifType::Realtime),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY => Ok(SrNotifType::Replay),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY_COMPLETE => Ok(SrNotifType::ReplayComplete),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_TERMINATED => Ok(SrNotifType::Terminated),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_MODIFIED => Ok(SrNotifType::Modified),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED => Ok(SrNotifType::Suspended),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED => Ok(SrNotifType::Resumed),
             _ => Err("Invalid SrNotifType"),
         }
     }
@@ -248,28 +248,28 @@ impl TryFrom<u32> for SrNotifType {
 /// Lyd Anydata Value Type.
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub enum LydAnyDataValueType {
-    String = LYD_ANYDATA_VALUETYPE_LYD_ANYDATA_STRING as isize,
-    Json = LYD_ANYDATA_VALUETYPE_LYD_ANYDATA_JSON as isize,
-    Xml = LYD_ANYDATA_VALUETYPE_LYD_ANYDATA_XML as isize,
-    Datatree = LYD_ANYDATA_VALUETYPE_LYD_ANYDATA_DATATREE as isize,
-    Lyb = LYD_ANYDATA_VALUETYPE_LYD_ANYDATA_LYB as isize,
+    String = yang::ffi::LYD_ANYDATA_VALUETYPE::LYD_ANYDATA_STRING as isize,
+    Json = yang::ffi::LYD_ANYDATA_VALUETYPE::LYD_ANYDATA_JSON as isize,
+    Xml = yang::ffi::LYD_ANYDATA_VALUETYPE::LYD_ANYDATA_XML as isize,
+    Datatree = yang::ffi::LYD_ANYDATA_VALUETYPE::LYD_ANYDATA_DATATREE as isize,
+    Lyb = yang::ffi::LYD_ANYDATA_VALUETYPE::LYD_ANYDATA_LYB as isize,
 }
 
 /// Typedefs.
-pub type SrSessionId = *const sr_session_ctx_t;
-pub type SrSubscrId = *const sr_subscription_ctx_t;
+pub type SrSessionId = *const ffi::sr_session_ctx_t;
+pub type SrSubscrId = *const ffi::sr_subscription_ctx_t;
 
 /// Single Sysrepo Value.
 pub struct SrValue {
-    value: *mut sr_val_t,
+    value: *mut ffi::sr_val_t,
 }
 
 impl SrValue {
-    pub fn from(value: *mut sr_val_t) -> Self {
+    pub fn from(value: *mut ffi::sr_val_t) -> Self {
         Self { value: value }
     }
 
-    pub fn value(&self) -> *mut sr_val_t {
+    pub fn value(&self) -> *mut ffi::sr_val_t {
         self.value
     }
 }
@@ -277,7 +277,7 @@ impl SrValue {
 impl Drop for SrValue {
     fn drop(&mut self) {
         unsafe {
-            sr_free_val(self.value);
+            ffi::sr_free_val(self.value);
         }
     }
 }
@@ -286,27 +286,27 @@ impl Drop for SrValue {
 ///  The size of slice cannot change.
 pub struct SrValueSlice {
     /// Pointer to raw sr_val_t array.
-    values: *mut sr_val_t,
+    values: *mut ffi::sr_val_t,
 
     /// Length of this slice.
-    len: u64,
+    len: size_t,
 
     /// Owned flag.
     owned: bool,
 }
 
 impl SrValueSlice {
-    pub fn new(capacity: u64, owned: bool) -> Self {
+    pub fn new(capacity: size_t, owned: bool) -> Self {
         Self {
             values: unsafe {
-                libc::malloc(mem::size_of::<sr_val_t>() * capacity as usize) as *mut sr_val_t
+                libc::malloc(mem::size_of::<ffi::sr_val_t>() * capacity as usize) as *mut ffi::sr_val_t
             },
             len: capacity,
             owned: owned,
         }
     }
 
-    pub fn from(values: *mut sr_val_t, len: u64, owned: bool) -> Self {
+    pub fn from(values: *mut ffi::sr_val_t, len: size_t, owned: bool) -> Self {
         Self {
             values: values,
             len: len,
@@ -314,21 +314,21 @@ impl SrValueSlice {
         }
     }
 
-    pub fn at_mut(&mut self, index: usize) -> &mut sr_val_t {
+    pub fn at_mut(&mut self, index: usize) -> &mut ffi::sr_val_t {
         let slice = unsafe { slice::from_raw_parts_mut(self.values, self.len as usize) };
 
         &mut slice[index]
     }
 
-    pub fn as_slice(&mut self) -> &[sr_val_t] {
+    pub fn as_slice(&mut self) -> &[ffi::sr_val_t] {
         unsafe { slice::from_raw_parts(self.values, self.len as usize) }
     }
 
-    pub fn as_ptr(&self) -> *mut sr_val_t {
+    pub fn as_ptr(&self) -> *mut ffi::sr_val_t {
         self.values
     }
 
-    pub fn len(&self) -> u64 {
+    pub fn len(&self) -> size_t {
         self.len
     }
 
@@ -340,10 +340,10 @@ impl SrValueSlice {
         let xpath = str_to_cstring(&xpath)?;
         let xpath_ptr = xpath.as_ptr();
 
-        let mut val = self.at_mut(index) as *mut sr_val_t;
+        let val = self.at_mut(index) as *mut ffi::sr_val_t;
         unsafe {
             (*val).xpath = libc::strdup(xpath_ptr);
-            (*val).type_ = sr_val_type_t_SR_INT64_T;
+            (*val).type_ = ffi::sr_val_type_t::SR_INT64_T;
             (*val).dflt = if dflt { 0 } else { 1 }; //TODO: It is really those values?
             (*val).data.int64_val = value;
         }
@@ -356,7 +356,7 @@ impl Drop for SrValueSlice {
     fn drop(&mut self) {
         if self.owned {
             unsafe {
-                sr_free_values(self.values, self.len);
+                ffi::sr_free_values(self.values, self.len);
             }
         }
     }
@@ -365,7 +365,7 @@ impl Drop for SrValueSlice {
 /// Set Log Stderr.
 pub fn log_stderr(log_level: SrLogLevel) {
     unsafe {
-        sr_log_stderr(log_level as u32);
+        ffi::sr_log_stderr(log_level as u32);
     }
 }
 
@@ -373,7 +373,7 @@ pub fn log_stderr(log_level: SrLogLevel) {
 pub fn log_syslog(app_name: &str, log_level: SrLogLevel) -> Result<(), i32> {
     let app_name = str_to_cstring(app_name)?;
     unsafe {
-        sr_log_syslog(app_name.as_ptr(), log_level as u32);
+        ffi::sr_log_syslog(app_name.as_ptr(), log_level as u32);
     }
 
     Ok(())
@@ -382,7 +382,7 @@ pub fn log_syslog(app_name: &str, log_level: SrLogLevel) -> Result<(), i32> {
 /// Sysrepo connection.
 pub struct SrConn {
     /// Raw Pointer to Connection.
-    conn: *mut sr_conn_ctx_t,
+    conn: *mut ffi::sr_conn_ctx_t,
 
     /// Sessions.
     sessions: HashMap<SrSessionId, SrSession>,
@@ -390,10 +390,10 @@ pub struct SrConn {
 
 impl SrConn {
     /// Constructor.
-    pub fn new(opts: sr_conn_options_t) -> Result<SrConn, i32> {
+    pub fn new(opts: ffi::sr_conn_options_t) -> Result<SrConn, i32> {
         let mut conn = std::ptr::null_mut();
 
-        let rc = unsafe { sr_connect(opts, &mut conn) };
+        let rc = unsafe { ffi::sr_connect(opts, &mut conn) };
 
         if rc != SrError::Ok as i32 {
             Err(rc)
@@ -408,7 +408,7 @@ impl SrConn {
     /// Disconnect.
     pub fn disconnect(&mut self) {
         unsafe {
-            sr_disconnect(self.conn);
+            ffi::sr_disconnect(self.conn);
         }
         self.conn = std::ptr::null_mut();
     }
@@ -431,7 +431,7 @@ impl SrConn {
     /// Start session.
     pub fn start_session(&mut self, ds: SrDatastore) -> Result<&mut SrSession, i32> {
         let mut sess = std::ptr::null_mut();
-        let rc = unsafe { sr_session_start(self.conn, ds as u32, &mut sess) };
+        let rc = unsafe { ffi::sr_session_start(self.conn, ds as u32, &mut sess) };
         if rc != SrError::Ok as i32 {
             Err(rc)
         } else {
@@ -443,7 +443,7 @@ impl SrConn {
 
     /// Get context.
     pub fn get_context(&mut self) -> LibYangCtx {
-        LibYangCtx::from(unsafe { sr_acquire_context(self.conn) })
+        LibYangCtx::from(unsafe { ffi::sr_acquire_context(self.conn) })
     }
 }
 
@@ -457,7 +457,7 @@ impl Drop for SrConn {
 /// Sysrepo session.
 pub struct SrSession {
     /// Raw Pointer to session.
-    sess: *mut sr_session_ctx_t,
+    sess: *mut ffi::sr_session_ctx_t,
 
     /// Owned flag.
     owned: bool,
@@ -477,7 +477,7 @@ impl SrSession {
     }
 
     /// Constructor.
-    pub fn from(sess: *mut sr_session_ctx_t, owned: bool) -> Self {
+    pub fn from(sess: *mut ffi::sr_session_ctx_t, owned: bool) -> Self {
         Self {
             sess: sess,
             owned: owned,
@@ -495,7 +495,7 @@ impl SrSession {
     }
 
     /// Get raw session context.
-    pub unsafe fn get_ctx(&self) -> *mut sr_session_ctx_t {
+    pub unsafe fn get_ctx(&self) -> *mut ffi::sr_session_ctx_t {
         self.sess
     }
 
@@ -513,23 +513,23 @@ impl SrSession {
     }
 
     /// Get tree from given XPath.
-    pub fn get_data(
+    pub fn get_data<'a>(
         &mut self,
-        context: &Arc<Context>,
+        context: &'a Arc<Context>,
         xpath: &str,
         max_depth: Option<u32>,
         timeout: Option<Duration>,
         opts: u32
-    ) -> Result<DataTree, i32> {
+    ) -> Result<DataTree<'a>, i32> {
         let xpath = str_to_cstring(xpath)?;
         let max_depth = max_depth.unwrap_or(0);
         let timeout_ms = timeout.map_or(0, |timeout| timeout.as_millis() as u32);
 
         // SAFETY: data is used as output by sr_get_data and is not read
-        let mut data: *mut sr_data_t = unsafe { zeroed::<*mut sr_data_t>() };
+        let mut data: *mut ffi::sr_data_t = unsafe { zeroed::<*mut ffi::sr_data_t>() };
 
         let rc = unsafe {
-            sr_get_data(
+            ffi::sr_get_data(
                 self.sess,
                 xpath.as_ptr(),
                 max_depth,
@@ -547,12 +547,12 @@ impl SrSession {
             return Err(SrError::NotFound as i32);
         }
 
-        let conn = unsafe { sr_session_get_connection(self.sess) };
+        let conn = unsafe { ffi::sr_session_get_connection(self.sess) };
 
         if unsafe {(*data).conn} != conn {
             // It should never happen that the returned connection does not match the supplied one
             // SAFETY: data was checked as not NULL just above
-            unsafe { sr_release_data(data); }
+            unsafe { ffi::sr_release_data(data); }
 
             return Err(SrError::Internal as i32);
         }
@@ -569,17 +569,17 @@ impl SrSession {
     ) -> Result<SrValueSlice, i32> {
         let xpath = str_to_cstring(xpath)?;
         let timeout_ms = timeout.map_or(0, |timeout| timeout.as_millis() as u32);
-        let mut values_count: u64 = 0;
-        let mut values: *mut sr_val_t = unsafe { zeroed::<*mut sr_val_t>() };
+        let mut values_count: size_t = 0;
+        let mut values: *mut ffi::sr_val_t = unsafe { zeroed::<*mut ffi::sr_val_t>() };
 
         let rc = unsafe {
-            sr_get_items(
+            ffi::sr_get_items(
                 self.sess,
                 xpath.as_ptr(),
                 timeout_ms,
                 opts,
                 &mut values,
-                &mut values_count,
+                &mut values_count as *mut size_t,
             )
         };
         if rc != SrError::Ok as i32 {
@@ -605,7 +605,7 @@ impl SrSession {
         };
         let origin_ptr = origin.map_or(std::ptr::null(), |orig| orig.as_ptr());
 
-        let rc = unsafe { sr_set_item_str(self.sess, path.as_ptr(), value.as_ptr(), origin_ptr, opts) };
+        let rc = unsafe { ffi::sr_set_item_str(self.sess, path.as_ptr(), value.as_ptr(), origin_ptr, opts) };
         if rc != SrError::Ok as i32 {
             Err(rc)
         } else {
@@ -617,7 +617,7 @@ impl SrSession {
     pub fn apply_changes(&mut self, timeout: Option<Duration>) -> Result<(), i32> {
         let timeout_ms = timeout.map_or(0, |timeout| timeout.as_millis() as u32);
 
-        let rc = unsafe { sr_apply_changes(self.sess, timeout_ms) };
+        let rc = unsafe { ffi::sr_apply_changes(self.sess, timeout_ms) };
         if rc != SrError::Ok as i32 {
             Err(rc)
         } else {
@@ -633,7 +633,7 @@ impl SrSession {
         start_time: Option<*mut timespec>,
         stop_time: Option<*mut timespec>,
         callback: F,
-        opts: sr_subscr_options_t,
+        opts: ffi::sr_subscr_options_t,
     ) -> Result<&mut SrSubscr, i32>
     where
         F: FnMut(SrSession, u32, SrNotifType, &str, SrValueSlice, *mut timespec) + 'static,
@@ -647,11 +647,11 @@ impl SrSession {
         let start_time = start_time.unwrap_or(std::ptr::null_mut());
         let stop_time = stop_time.unwrap_or(std::ptr::null_mut());
 
-        let mut subscr: *mut sr_subscription_ctx_t =
-            unsafe { zeroed::<*mut sr_subscription_ctx_t>() };
+        let mut subscr: *mut ffi::sr_subscription_ctx_t =
+            unsafe { zeroed::<*mut ffi::sr_subscription_ctx_t>() };
         let data = Box::into_raw(Box::new(callback));
         let rc = unsafe {
-            sr_notif_subscribe(
+            ffi::sr_notif_subscribe(
                 self.sess,
                 mod_name.as_ptr(),
                 xpath_ptr,
@@ -673,11 +673,11 @@ impl SrSession {
     }
 
     unsafe extern "C" fn call_event_notif<F>(
-        sess: *mut sr_session_ctx_t,
+        sess: *mut ffi::sr_session_ctx_t,
         sub_id: u32,
-        notif_type: sr_ev_notif_type_t,
+        notif_type: ffi::sr_ev_notif_type_t::Type,
         path: *const c_char,
-        values: *const sr_val_t,
+        values: *const ffi::sr_val_t,
         values_cnt: size_t,
         timestamp: *mut timespec,
         private_data: *mut c_void,
@@ -688,7 +688,7 @@ impl SrSession {
         let callback = &mut *callback_ptr;
 
         let path = CStr::from_ptr(path).to_str().unwrap();
-        let sr_values = SrValueSlice::from(values as *mut sr_val_t, values_cnt, false);
+        let sr_values = SrValueSlice::from(values as *mut ffi::sr_val_t, values_cnt, false);
         let sess = SrSession::from(sess, false);
         let notif_type = SrNotifType::try_from(notif_type).expect("Convert error");
 
@@ -701,20 +701,20 @@ impl SrSession {
         xpath: Option<String>,
         callback: F,
         priority: u32,
-        opts: sr_subscr_options_t,
+        opts: ffi::sr_subscr_options_t,
     ) -> Result<&mut SrSubscr, i32>
     where
         F: FnMut(SrSession, u32, &str, SrValueSlice, SrEvent, u32) -> SrValueSlice + 'static,
     {
-        let mut subscr: *mut sr_subscription_ctx_t =
-            unsafe { zeroed::<*mut sr_subscription_ctx_t>() };
+        let mut subscr: *mut ffi::sr_subscription_ctx_t =
+            unsafe { zeroed::<*mut ffi::sr_subscription_ctx_t>() };
         let data = Box::into_raw(Box::new(callback));
 
         let rc = unsafe {
             match xpath {
                 Some(xpath) => {
                     let xpath = str_to_cstring(&xpath)?;
-                    sr_rpc_subscribe(
+                    ffi::sr_rpc_subscribe(
                         self.sess,
                         xpath.as_ptr(),
                         Some(SrSession::call_rpc::<F>),
@@ -724,7 +724,7 @@ impl SrSession {
                         &mut subscr,
                     )
                 }
-                None => sr_rpc_subscribe(
+                None => ffi::sr_rpc_subscribe(
                     self.sess,
                     std::ptr::null_mut(),
                     Some(SrSession::call_rpc::<F>),
@@ -745,15 +745,15 @@ impl SrSession {
     }
 
     unsafe extern "C" fn call_rpc<F>(
-        sess: *mut sr_session_ctx_t,
+        sess: *mut ffi::sr_session_ctx_t,
         sub_id: u32,
         op_path: *const c_char,
-        input: *const sr_val_t,
+        input: *const ffi::sr_val_t,
         input_cnt: size_t,
-        event: sr_event_t,
+        event: ffi::sr_event_t::Type,
         request_id: u32,
-        output: *mut *mut sr_val_t,
-        output_cnt: *mut u64,
+        output: *mut *mut ffi::sr_val_t,
+        output_cnt: *mut size_t,
         private_data: *mut c_void,
     ) -> i32
     where
@@ -763,7 +763,7 @@ impl SrSession {
         let callback = &mut *callback_ptr;
 
         let op_path = CStr::from_ptr(op_path).to_str().unwrap();
-        let inputs = SrValueSlice::from(input as *mut sr_val_t, input_cnt, false);
+        let inputs = SrValueSlice::from(input as *mut ffi::sr_val_t, input_cnt, false);
         let sess = SrSession::from(sess, false);
         let event = SrEvent::try_from(event).expect("Convert error");
 
@@ -771,7 +771,7 @@ impl SrSession {
         *output = sr_output.as_ptr();
         *output_cnt = sr_output.len();
 
-        sr_error_t_SR_ERR_OK as i32
+        ffi::sr_error_t::SR_ERR_OK as i32
     }
 
     /// Subscribe oper get items.
@@ -780,19 +780,19 @@ impl SrSession {
         mod_name: &str,
         path: &str,
         callback: F,
-        opts: sr_subscr_options_t,
+        opts: ffi::sr_subscr_options_t,
     ) -> Result<&mut SrSubscr, i32>
     where
         F: FnMut(&LibYangCtx, u32, &str, &str, Option<&str>, u32) -> Option<LydNode> + 'static,
     {
-        let mut subscr: *mut sr_subscription_ctx_t =
-            unsafe { zeroed::<*mut sr_subscription_ctx_t>() };
+        let mut subscr: *mut ffi::sr_subscription_ctx_t =
+            unsafe { zeroed::<*mut ffi::sr_subscription_ctx_t>() };
         let data = Box::into_raw(Box::new(callback));
         let mod_name = str_to_cstring(mod_name)?;
         let path = str_to_cstring(path)?;
 
         let rc = unsafe {
-            sr_oper_get_subscribe(
+            ffi::sr_oper_get_subscribe(
                 self.sess,
                 mod_name.as_ptr(),
                 path.as_ptr(),
@@ -812,13 +812,13 @@ impl SrSession {
     }
 
     unsafe extern "C" fn call_get_items<F>(
-        sess: *mut sr_session_ctx_t,
+        sess: *mut ffi::sr_session_ctx_t,
         sub_id: u32,
         mod_name: *const c_char,
         path: *const c_char,
         request_xpath: *const c_char,
         request_id: u32,
-        parent: *mut *mut lyd_node,
+        parent: *mut *mut yang::ffi::lyd_node,
         private_data: *mut c_void,
     ) -> i32
     where
@@ -827,7 +827,7 @@ impl SrSession {
         let callback_ptr = private_data as *mut F;
         let callback = &mut *callback_ptr;
 
-        let ctx = sr_acquire_context(sr_session_get_connection(sess));
+        let ctx = ffi::sr_acquire_context(ffi::sr_session_get_connection(sess));
 
         let mod_name = CStr::from_ptr(mod_name).to_str().unwrap();
         let path = CStr::from_ptr(path).to_str().unwrap();
@@ -847,7 +847,7 @@ impl SrSession {
             None => {}
         }
 
-        sr_error_t_SR_ERR_OK as i32
+        ffi::sr_error_t::SR_ERR_OK as i32
     }
 
     /// Subscribe module change.
@@ -857,13 +857,13 @@ impl SrSession {
         path: Option<&str>,
         callback: F,
         priority: u32,
-        opts: sr_subscr_options_t,
+        opts: ffi::sr_subscr_options_t,
     ) -> Result<&mut SrSubscr, i32>
     where
         F: FnMut(SrSession, u32, &str, Option<&str>, SrEvent, u32) -> () + 'static,
     {
-        let mut subscr: *mut sr_subscription_ctx_t =
-            unsafe { zeroed::<*mut sr_subscription_ctx_t>() };
+        let mut subscr: *mut ffi::sr_subscription_ctx_t =
+            unsafe { zeroed::<*mut ffi::sr_subscription_ctx_t>() };
         let data = Box::into_raw(Box::new(callback));
         let mod_name = str_to_cstring(mod_name)?;
         let path = match path {
@@ -873,7 +873,7 @@ impl SrSession {
         let path_ptr = path.map_or(std::ptr::null(), |path| path.as_ptr());
 
         let rc = unsafe {
-            sr_module_change_subscribe(
+            ffi::sr_module_change_subscribe(
                 self.sess,
                 mod_name.as_ptr(),
                 path_ptr,
@@ -894,11 +894,11 @@ impl SrSession {
     }
 
     unsafe extern "C" fn call_module_change<F>(
-        sess: *mut sr_session_ctx_t,
+        sess: *mut ffi::sr_session_ctx_t,
         sub_id: u32,
         mod_name: *const c_char,
         path: *const c_char,
-        event: sr_event_t,
+        event: ffi::sr_event_t::Type,
         request_id: u32,
         private_data: *mut c_void,
     ) -> i32
@@ -919,15 +919,15 @@ impl SrSession {
 
         callback(sess, sub_id, mod_name, path, event, request_id);
 
-        sr_error_t_SR_ERR_OK as i32
+        ffi::sr_error_t::SR_ERR_OK as i32
     }
 
     /// Get changes iter.
     pub fn get_changes_iter(&self, path: &str) -> Result<SrChangeIter, i32> {
-        let mut it = unsafe { zeroed::<*mut sr_change_iter_t>() };
+        let mut it = unsafe { zeroed::<*mut ffi::sr_change_iter_t>() };
 
         let path = str_to_cstring(path)?;
-        let rc = unsafe { sr_get_changes_iter(self.sess, path.as_ptr(), &mut it) };
+        let rc = unsafe { ffi::sr_get_changes_iter(self.sess, path.as_ptr(), &mut it) };
 
         if rc != SrError::Ok as i32 {
             Err(rc)
@@ -943,7 +943,7 @@ impl SrSession {
         timeout_ms: u32,
         wait: i32,
     ) -> Result<(), i32> {
-        let rc = unsafe { sr_notif_send_tree(self.sess, notif.get_node(), timeout_ms, wait) };
+        let rc = unsafe { ffi::sr_notif_send_tree(self.sess, notif.get_node(), timeout_ms, wait) };
         if rc != SrError::Ok as i32 {
             Err(rc)
         } else {
@@ -955,28 +955,28 @@ impl SrSession {
     pub fn rpc_send(
         &mut self,
         path: &str,
-        input: Option<Vec<sr_val_t>>,
+        input: Option<Vec<ffi::sr_val_t>>,
         timeout: Option<Duration>,
     ) -> Result<SrValueSlice, i32> {
         let path = str_to_cstring(path)?;
         let (input, input_cnt) = match input {
-            Some(mut input) => (input.as_mut_ptr(), input.len() as u64),
+            Some(mut input) => (input.as_mut_ptr(), input.len() as size_t),
             None => (std::ptr::null_mut(), 0),
         };
         let timeout = timeout.map_or(0, |timeout| timeout.as_millis() as u32);
 
-        let mut output: *mut sr_val_t = unsafe { zeroed::<*mut sr_val_t>() };
-        let mut output_count: u64 = 0;
+        let mut output: *mut ffi::sr_val_t = unsafe { zeroed::<*mut ffi::sr_val_t>() };
+        let mut output_count: size_t = 0;
 
         let rc = unsafe {
-            sr_rpc_send(
+            ffi::sr_rpc_send(
                 self.sess,
                 path.as_ptr(),
                 input,
                 input_cnt,
                 timeout,
                 &mut output,
-                &mut output_count,
+                &mut output_count as *mut size_t,
             )
         };
 
@@ -992,12 +992,12 @@ impl SrSession {
         &mut self,
         iter: &mut SrChangeIter,
     ) -> Option<(SrChangeOper, SrValue, SrValue)> {
-        let mut oper: sr_change_oper_t = 0;
-        let mut old_value: *mut sr_val_t = std::ptr::null_mut();
-        let mut new_value: *mut sr_val_t = std::ptr::null_mut();
+        let mut oper: ffi::sr_change_oper_t::Type = 0;
+        let mut old_value: *mut ffi::sr_val_t = std::ptr::null_mut();
+        let mut new_value: *mut ffi::sr_val_t = std::ptr::null_mut();
 
         let rc = unsafe {
-            sr_get_change_next(
+            ffi::sr_get_change_next(
                 self.sess,
                 iter.iter(),
                 &mut oper,
@@ -1023,7 +1023,7 @@ impl Drop for SrSession {
             self.subscrs.drain();
 
             unsafe {
-                sr_session_stop(self.sess);
+                ffi::sr_session_stop(self.sess);
             }
         }
     }
@@ -1032,7 +1032,7 @@ impl Drop for SrSession {
 /// Sysrepo Subscription.
 pub struct SrSubscr {
     /// Raw Pointer to subscription.
-    subscr: *mut sr_subscription_ctx_t,
+    subscr: *mut ffi::sr_subscription_ctx_t,
 }
 
 impl SrSubscr {
@@ -1042,7 +1042,7 @@ impl SrSubscr {
         }
     }
 
-    pub fn from(subscr: *mut sr_subscription_ctx_t) -> Self {
+    pub fn from(subscr: *mut ffi::sr_subscription_ctx_t) -> Self {
         Self { subscr: subscr }
     }
 
@@ -1054,7 +1054,7 @@ impl SrSubscr {
 impl Drop for SrSubscr {
     fn drop(&mut self) {
         unsafe {
-            sr_unsubscribe(self.subscr);
+            ffi::sr_unsubscribe(self.subscr);
         }
     }
 }
@@ -1062,15 +1062,15 @@ impl Drop for SrSubscr {
 /// Sysrepo Changes Iterator.
 pub struct SrChangeIter {
     /// Raw pointer to iter.
-    iter: *mut sr_change_iter_t,
+    iter: *mut ffi::sr_change_iter_t,
 }
 
 impl SrChangeIter {
-    pub fn from(iter: *mut sr_change_iter_t) -> Self {
+    pub fn from(iter: *mut ffi::sr_change_iter_t) -> Self {
         Self { iter: iter }
     }
 
-    pub fn iter(&mut self) -> *mut sr_change_iter_t {
+    pub fn iter(&mut self) -> *mut ffi::sr_change_iter_t {
         self.iter
     }
 }
@@ -1078,7 +1078,7 @@ impl SrChangeIter {
 impl Drop for SrChangeIter {
     fn drop(&mut self) {
         unsafe {
-            sr_free_change_iter(self.iter);
+            ffi::sr_free_change_iter(self.iter);
         }
     }
 }
@@ -1087,16 +1087,16 @@ impl Drop for SrChangeIter {
 ///  It just holds raw pointer, but does not own the object.
 pub struct LibYangCtx {
     /// Raw Pointer to Lib Yang Context.
-    ly_ctx: *const ly_ctx,
+    ly_ctx: *const yang::ffi::ly_ctx,
 }
 
 impl LibYangCtx {
     /// Constructo from raw pointer.
-    pub fn from(ly_ctx: *const ly_ctx) -> Self {
+    pub fn from(ly_ctx: *const yang::ffi::ly_ctx) -> Self {
         Self { ly_ctx: ly_ctx }
     }
 
-    pub fn get_ctx(&self) -> *const ly_ctx {
+    pub fn get_ctx(&self) -> *const yang::ffi::ly_ctx {
         self.ly_ctx
     }
 }
@@ -1104,39 +1104,39 @@ impl LibYangCtx {
 /// LibYang data node.
 pub struct LydNode {
     /// Raw pointer to LibYang data node.
-    node: *mut lyd_node,
+    node: *mut yang::ffi::lyd_node,
 
     // /// Value.
     // value: Option<LydValue>,
 }
 
 impl LydNode {
-    pub fn from(node: *mut lyd_node) -> Self {
+    pub fn from(node: *mut yang::ffi::lyd_node) -> Self {
         Self {
             node: node,
             // value: None,
         }
     }
 
-    pub fn get_node(&self) -> *mut lyd_node {
+    pub fn get_node(&self) -> *mut yang::ffi::lyd_node {
         self.node
     }
 
     pub fn free_all(&self) {
         unsafe {
-            lyd_free_all(self.node);
+            yang::ffi::lyd_free_all(self.node);
         }
     }
 
     pub fn free_siblings(&self) {
         unsafe {
-            lyd_free_siblings(self.node);
+            yang::ffi::lyd_free_siblings(self.node);
         }
     }
 
     pub fn free_tree(&self) {
         unsafe {
-            lyd_free_tree(self.node);
+            yang::ffi::lyd_free_tree(self.node);
         }
     }
 }
@@ -1184,10 +1184,10 @@ impl LibYang {
     ) -> Result<LydNode, i32> {
         let parent = parent.map_or(std::ptr::null_mut(), |parent| parent.get_node());
         let ctx = ly_ctx.map_or(std::ptr::null_mut(), |ly_ctx| {
-            ly_ctx.get_ctx() as *mut ly_ctx
+            ly_ctx.get_ctx() as *mut yang::ffi::ly_ctx
         });
         let path = str_to_cstring(path)?;
-        let mut node: *mut lyd_node = unsafe { zeroed::<*mut lyd_node>() };
+        let mut node: *mut yang::ffi::lyd_node = unsafe { zeroed::<*mut yang::ffi::lyd_node>() };
 
 
         let val = match value {
@@ -1195,9 +1195,9 @@ impl LibYang {
             None => std::ptr::null_mut(),
         };
 
-        let rc = unsafe { lyd_new_path(parent, ctx, path.as_ptr(), val, options, &mut node) };
+        let rc = unsafe { yang::ffi::lyd_new_path(parent, ctx, path.as_ptr(), val, options, &mut node) };
 
-        if rc != LY_ERR_LY_SUCCESS {
+        if rc != yang::ffi::LY_ERR::LY_SUCCESS {
             Err(rc as i32) // FIXME: We should not cast like this
         } else {
             Ok(LydNode::from(node))
@@ -1208,4 +1208,3 @@ impl LibYang {
 fn str_to_cstring(s: &str) -> Result<CString,i32> {
     CString::new(s).map_err(|_| SrError::InvalArg as i32)
 }
-

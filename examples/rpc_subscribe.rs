@@ -3,11 +3,15 @@
 //   rpc_subscribe
 //
 
+#[path = "../example_utils.rs"]
+mod utils;
+
 use std::env;
 use std::thread;
 use std::time;
 
 use sysrepo::*;
+
 use utils::*;
 
 /// Show help.
@@ -61,7 +65,7 @@ fn run() -> bool {
              _request_id: u32|
      -> SrValueSlice {
         let mut sr_output = SrValueSlice::new(1, false);
-        sr_output.set_int64_value(0, false, "/examples:oper/ret", -123456);
+        sr_output.set_int64_value(0, false, "/examples:oper/ret", -123456).unwrap();
         sr_output
     };
 
