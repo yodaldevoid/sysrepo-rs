@@ -39,9 +39,8 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// Log level.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SrLogLevel {
+pub enum LogLevel {
     None = ffi::sr_log_level_t::SR_LL_NONE as isize,
     Error = ffi::sr_log_level_t::SR_LL_ERR as isize,
     Warn = ffi::sr_log_level_t::SR_LL_WRN as isize,
@@ -347,18 +346,18 @@ impl Drop for SrValueSlice {
     }
 }
 
-/// Set Log Stderr.
-pub fn log_stderr(log_level: SrLogLevel) {
+/// Set logging level for logging to the standard error stream.
+pub fn log_stderr(log_level: LogLevel) {
     unsafe {
-        ffi::sr_log_stderr(log_level as u32);
+        ffi::sr_log_stderr(log_level as ffi::sr_log_level_t::Type);
     }
 }
 
-/// Set Log Syslog.
-pub fn log_syslog(app_name: &str, log_level: SrLogLevel) -> Result<()> {
+/// Set logging level for logging to syslog.
+pub fn log_syslog(app_name: &str, log_level: LogLevel) -> Result<()> {
     let app_name = str_to_cstring(app_name)?;
     unsafe {
-        ffi::sr_log_syslog(app_name.as_ptr(), log_level as u32);
+        ffi::sr_log_syslog(app_name.as_ptr(), log_level as ffi::sr_log_level_t::Type);
     }
 
     Ok(())

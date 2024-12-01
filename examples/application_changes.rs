@@ -97,7 +97,7 @@ fn run() -> bool {
     );
 
     // Turn logging on.
-    log_stderr(SrLogLevel::Warn);
+    log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
     let mut sr = match SrConn::new(0) {
