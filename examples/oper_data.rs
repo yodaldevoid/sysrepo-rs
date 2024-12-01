@@ -11,6 +11,7 @@ use std::thread;
 use std::time;
 
 use sysrepo::*;
+use yang::data::DataTree;
 
 use utils::*;
 
@@ -58,13 +59,14 @@ fn run() -> bool {
     };
 
     // Callback
-    let f = |ctx: &LibYangCtx,
-             sub_id: u32,
-             mod_name: &str,
-             path: &str,
-             _request_xpath: Option<&str>,
-             _request_id: u32|
-     -> Option<LydNode> {
+    let f = |
+        tree: &mut DataTree<'_>,
+        sub_id: u32,
+        mod_name: &str,
+        path: &str,
+        _request_xpath: Option<&str>,
+        _request_id: u32,
+    | {
         println!("");
         println!("");
         println!(
@@ -74,17 +76,8 @@ fn run() -> bool {
         println!("");
 
         if mod_name == "examples" && path == "/examples:stats" {
-            let path1 = String::from("/examples:stats/counter");
-            let val1 = LydValue::from_string("852".to_string());
-            let path2 = String::from("/examples:stats/counter2");
-            let val2 = LydValue::from_string("1052".to_string());
-
-            let parent = LibYang::lyd_new_path(None, Some(ctx), &path1, Some(&val1), 0).unwrap();
-            LibYang::lyd_new_path(Some(&parent), None, &path2, Some(&val2), 0).unwrap();
-
-            Some(parent)
-        } else {
-            None
+            tree.new_path("/examples:stats/counter", Some("852"), false).unwrap();
+            tree.new_path("/examples:stats/counter2", Some("1052"), false).unwrap();
         }
     };
 

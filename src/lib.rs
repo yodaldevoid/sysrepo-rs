@@ -3,10 +3,9 @@ use std::convert::TryFrom;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
-use std::mem;
-use std::mem::zeroed;
-use std::os::raw::c_char;
-use std::os::raw::c_void;
+use std::mem::{self, ManuallyDrop, zeroed};
+use std::ops::Deref;
+use std::os::raw::{c_char, c_int, c_void};
 use std::slice;
 use std::time::Duration;
 use std::sync::Arc;
@@ -245,16 +244,6 @@ impl TryFrom<u32> for SrNotifType {
     }
 }
 
-/// Lyd Anydata Value Type.
-#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
-pub enum LydAnyDataValueType {
-    String = yang::ffi::LYD_ANYDATA_VALUETYPE::LYD_ANYDATA_STRING as isize,
-    Json = yang::ffi::LYD_ANYDATA_VALUETYPE::LYD_ANYDATA_JSON as isize,
-    Xml = yang::ffi::LYD_ANYDATA_VALUETYPE::LYD_ANYDATA_XML as isize,
-    Datatree = yang::ffi::LYD_ANYDATA_VALUETYPE::LYD_ANYDATA_DATATREE as isize,
-    Lyb = yang::ffi::LYD_ANYDATA_VALUETYPE::LYD_ANYDATA_LYB as isize,
-}
-
 /// Typedefs.
 pub type SrSessionId = *const ffi::sr_session_ctx_t;
 pub type SrSubscrId = *const ffi::sr_subscription_ctx_t;
@@ -441,9 +430,15 @@ impl SrConn {
         }
     }
 
-    /// Get context.
-    pub fn get_context(&mut self) -> LibYangCtx {
-        LibYangCtx::from(unsafe { ffi::sr_acquire_context(self.conn) })
+    pub fn get_context(&self) -> Option<AcquiredContext<'_>> {
+        let ctx = unsafe {
+            let ctx = ffi::sr_acquire_context(self.conn) as *mut _;
+            Context::from_raw_opt(&(), ctx)
+        };
+        ctx.map(|ctx| AcquiredContext {
+            conn: self,
+            ctx: ManuallyDrop::new(ctx),
+        })
     }
 }
 
@@ -451,6 +446,28 @@ impl Drop for SrConn {
     fn drop(&mut self) {
         self.sessions.drain();
         self.disconnect();
+    }
+}
+
+/// A wrapper around `Context` to ensure it is released back to sysrepo on drop.
+pub struct AcquiredContext<'a> {
+    conn: &'a SrConn,
+    ctx: ManuallyDrop<Context>,
+}
+
+impl Deref for AcquiredContext<'_> {
+    type Target = Context;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
+    }
+}
+
+impl Drop for AcquiredContext<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::sr_release_context(self.conn.conn);
+        }
     }
 }
 
@@ -783,7 +800,7 @@ impl SrSession {
         opts: ffi::sr_subscr_options_t,
     ) -> Result<&mut SrSubscr, i32>
     where
-        F: FnMut(&LibYangCtx, u32, &str, &str, Option<&str>, u32) -> Option<LydNode> + 'static,
+        F: FnMut(&mut DataTree<'_>, u32, &str, &str, Option<&str>, u32) + 'static,
     {
         let mut subscr: *mut ffi::sr_subscription_ctx_t =
             unsafe { zeroed::<*mut ffi::sr_subscription_ctx_t>() };
@@ -811,6 +828,7 @@ impl SrSession {
         }
     }
 
+    // TODO: allow callback to return an error
     unsafe extern "C" fn call_get_items<F>(
         sess: *mut ffi::sr_session_ctx_t,
         sub_id: u32,
@@ -820,34 +838,40 @@ impl SrSession {
         request_id: u32,
         parent: *mut *mut yang::ffi::lyd_node,
         private_data: *mut c_void,
-    ) -> i32
+    ) -> c_int
     where
-        F: FnMut(&LibYangCtx, u32, &str, &str, Option<&str>, u32) -> Option<LydNode>,
+        F: FnMut(&mut DataTree<'_>, u32, &str, &str, Option<&str>, u32),
     {
+        if private_data.is_null() || parent.is_null() {
+            return ffi::sr_error_t::SR_ERR_INTERNAL as c_int;
+        }
         let callback_ptr = private_data as *mut F;
         let callback = &mut *callback_ptr;
 
-        let ctx = ffi::sr_acquire_context(ffi::sr_session_get_connection(sess));
+        let conn = ffi::sr_session_get_connection(sess);
+        let ctx = ffi::sr_acquire_context(conn);
+        // ctx will only be NULL if the context as already locked for writing.
+        if ctx.is_null() {
+            return ffi::sr_error_t::SR_ERR_LOCKED as c_int;
+        }
+        let ctx = Context::from_raw(&(), ctx as *mut _);
+        let mut tree = DataTree::new(&ctx);
 
         let mod_name = CStr::from_ptr(mod_name).to_str().unwrap();
         let path = CStr::from_ptr(path).to_str().unwrap();
-        let request_xpath = if request_xpath == std::ptr::null_mut() {
+        let request_xpath = if request_xpath.is_null() {
             None
         } else {
             Some(CStr::from_ptr(request_xpath).to_str().unwrap())
         };
 
-        let ctx = LibYangCtx::from(ctx);
-        let node = callback(&ctx, sub_id, mod_name, path, request_xpath, request_id);
+        callback(&mut tree, sub_id, mod_name, path, request_xpath, request_id);
 
-        match node {
-            Some(node) => {
-                *parent = node.get_node();
-            }
-            None => {}
-        }
+        *parent = tree.into_raw();
 
-        ffi::sr_error_t::SR_ERR_OK as i32
+        ffi::sr_release_context(conn);
+
+        ffi::sr_error_t::SR_ERR_OK as c_int
     }
 
     /// Subscribe module change.
@@ -939,13 +963,21 @@ impl SrSession {
     /// Send event notify tree.
     pub fn notif_send_tree(
         &mut self,
-        notif: &LydNode,
+        notif: &DataTree,
         timeout_ms: u32,
-        wait: i32,
+        wait: bool,
     ) -> Result<(), i32> {
-        let rc = unsafe { ffi::sr_notif_send_tree(self.sess, notif.get_node(), timeout_ms, wait) };
-        if rc != SrError::Ok as i32 {
-            Err(rc)
+        let node = notif.reference().ok_or(SrError::InvalArg as i32)?;
+        let rc = unsafe {
+            ffi::sr_notif_send_tree(
+                self.sess,
+                node.as_raw(),
+                timeout_ms,
+                wait as c_int,
+            )
+        };
+        if rc != SrError::Ok as c_int {
+            Err(rc as i32)
         } else {
             Ok(())
         }
@@ -1079,128 +1111,6 @@ impl Drop for SrChangeIter {
     fn drop(&mut self) {
         unsafe {
             ffi::sr_free_change_iter(self.iter);
-        }
-    }
-}
-
-/// Lib Yang Context.
-///  It just holds raw pointer, but does not own the object.
-pub struct LibYangCtx {
-    /// Raw Pointer to Lib Yang Context.
-    ly_ctx: *const yang::ffi::ly_ctx,
-}
-
-impl LibYangCtx {
-    /// Constructo from raw pointer.
-    pub fn from(ly_ctx: *const yang::ffi::ly_ctx) -> Self {
-        Self { ly_ctx: ly_ctx }
-    }
-
-    pub fn get_ctx(&self) -> *const yang::ffi::ly_ctx {
-        self.ly_ctx
-    }
-}
-
-/// LibYang data node.
-pub struct LydNode {
-    /// Raw pointer to LibYang data node.
-    node: *mut yang::ffi::lyd_node,
-
-    // /// Value.
-    // value: Option<LydValue>,
-}
-
-impl LydNode {
-    pub fn from(node: *mut yang::ffi::lyd_node) -> Self {
-        Self {
-            node: node,
-            // value: None,
-        }
-    }
-
-    pub fn get_node(&self) -> *mut yang::ffi::lyd_node {
-        self.node
-    }
-
-    pub fn free_all(&self) {
-        unsafe {
-            yang::ffi::lyd_free_all(self.node);
-        }
-    }
-
-    pub fn free_siblings(&self) {
-        unsafe {
-            yang::ffi::lyd_free_siblings(self.node);
-        }
-    }
-
-    pub fn free_tree(&self) {
-        unsafe {
-            yang::ffi::lyd_free_tree(self.node);
-        }
-    }
-}
-
-/// LibYang data value.
-pub struct LydValue {
-    value_type: LydAnyDataValueType,
-
-    /// TBD: It is string for now.
-    ///      It has to be variable length of byte array.
-    value: CString,
-}
-
-impl LydValue {
-    pub fn from_string(s: String) -> Self {
-        Self {
-            value_type: LydAnyDataValueType::String,
-            value: CString::new(s).unwrap(),
-        }
-    }
-
-    pub fn get_value(&self) -> &CStr {
-        &self.value
-    }
-
-    pub fn get_value_raw(&self) -> *mut c_void {
-        self.get_value() as *const _ as *mut c_void
-    }
-
-    pub fn get_type(&self) -> LydAnyDataValueType {
-        self.value_type
-    }
-}
-
-/// Lib Yang Utilities.
-pub struct LibYang {}
-
-impl LibYang {
-    pub fn lyd_new_path(
-        parent: Option<&LydNode>,
-        ly_ctx: Option<&LibYangCtx>,
-        path: &str,
-        value: Option<&LydValue>,
-        options: u32,
-    ) -> Result<LydNode, i32> {
-        let parent = parent.map_or(std::ptr::null_mut(), |parent| parent.get_node());
-        let ctx = ly_ctx.map_or(std::ptr::null_mut(), |ly_ctx| {
-            ly_ctx.get_ctx() as *mut yang::ffi::ly_ctx
-        });
-        let path = str_to_cstring(path)?;
-        let mut node: *mut yang::ffi::lyd_node = unsafe { zeroed::<*mut yang::ffi::lyd_node>() };
-
-
-        let val = match value {
-            Some(value) => value.get_value().as_ptr(),
-            None => std::ptr::null_mut(),
-        };
-
-        let rc = unsafe { yang::ffi::lyd_new_path(parent, ctx, path.as_ptr(), val, options, &mut node) };
-
-        if rc != yang::ffi::LY_ERR::LY_SUCCESS {
-            Err(rc as i32) // FIXME: We should not cast like this
-        } else {
-            Ok(LydNode::from(node))
         }
     }
 }

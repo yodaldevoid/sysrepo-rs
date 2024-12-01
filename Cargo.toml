@@ -21,8 +21,8 @@ yang3 = ["dep:yang3", "sysrepo-sys/yang3"]
 [dependencies]
 sysrepo-sys = { version = "0.1.0", path = "./sysrepo-sys" }
 libc = "0.2.121"
-yang2 = { version = "0.7", optional = true }
-yang3 = { version = "0.12", optional = true }
+yang2 = { version = "0.18", optional = true }
+yang3 = { version = "0.13", optional = true }
 
 [dev-dependencies]
 nix = "0.17.0"

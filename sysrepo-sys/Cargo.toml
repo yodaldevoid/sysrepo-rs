@@ -24,4 +24,4 @@ yang3 = ["dep:libyang3-sys"]
 [dependencies]
 libc = "0.2.121"
 libyang2-sys = { version = "0.6", optional = true }
-libyang3-sys = { version = "0.2", optional = true }
+libyang3-sys = { version = "0.3", optional = true }

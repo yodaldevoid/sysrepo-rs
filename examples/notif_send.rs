@@ -6,6 +6,7 @@
 use std::env;
 
 use sysrepo::*;
+use yang::data::DataTree;
 
 /// Show help.
 fn print_help(program: &str) {
@@ -55,7 +56,7 @@ fn run() -> bool {
     };
 
     // Get Lib Yang Context from sysrepo connection.
-    let ly_ctx = sr.get_context();
+    let ly_ctx = sr.get_context().unwrap();
 
     // Start session.
     let sess = match sr.start_session(SrDatastore::Running) {
@@ -64,35 +65,24 @@ fn run() -> bool {
     };
 
     // Create the notification.
-    let notif = match LibYang::lyd_new_path(None, Some(&ly_ctx), &path, None, 0) {
-        Ok(notif) => notif,
-        Err(_) => {
-            println!(r#"Creating notification "{}" failed."#, path);
-            return false;
-        }
-    };
+    let mut notif = DataTree::new(&ly_ctx);
+    if let Err(_) = notif.new_path(&path, None, false) {
+        println!(r#"Creating notification "{}" failed."#, path);
+        return false;
+    }
 
     // Add the input value.
     if let Some((path, value)) = node_path_val {
-        let value = LydValue::from_string(value);
-        match LibYang::lyd_new_path(Some(&notif), None, &path, Some(&value), 0) {
-            Ok(_) => {}
-            Err(_) => {
-                notif.free_all();
-
-                println!(r#"Creating value "{}" failed."#, path);
-                return false;
-            }
+        if let Err(_) = notif.new_path(&path, Some(&value), false) {
+            println!(r#"Creating value "{}" failed."#, path);
+            return false;
         }
     }
 
     // Send the notification.
-    if let Err(_) = sess.notif_send_tree(&notif, 0, 0) {
-        notif.free_all();
-
+    if let Err(_) = sess.notif_send_tree(&notif, 0, false) {
         return false;
     }
 
-    notif.free_all();
     true
 }
