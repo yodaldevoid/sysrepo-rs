@@ -53,20 +53,18 @@ fn run() -> bool {
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let mut sr = match SrConn::new(0) {
+    let mut sr = match Conn::new(0) {
         Ok(sr) => sr,
         Err(_) => return false,
     };
 
     // Callback
-    let f = |
-        tree: &mut DataTree<'_>,
-        sub_id: u32,
-        mod_name: &str,
-        path: &str,
-        _request_xpath: Option<&str>,
-        _request_id: u32,
-    | {
+    let f = |tree: &mut DataTree<'_>,
+             sub_id: u32,
+             mod_name: &str,
+             path: &str,
+             _request_xpath: Option<&str>,
+             _request_id: u32| {
         println!("");
         println!("");
         println!(
@@ -76,13 +74,15 @@ fn run() -> bool {
         println!("");
 
         if mod_name == "examples" && path == "/examples:stats" {
-            tree.new_path("/examples:stats/counter", Some("852"), false).unwrap();
-            tree.new_path("/examples:stats/counter2", Some("1052"), false).unwrap();
+            tree.new_path("/examples:stats/counter", Some("852"), false)
+                .unwrap();
+            tree.new_path("/examples:stats/counter2", Some("1052"), false)
+                .unwrap();
         }
     };
 
     // Start session.
-    let sess = match sr.start_session(SrDatastore::Running) {
+    let sess = match sr.start_session(Datastore::Running) {
         Ok(sess) => sess,
         Err(_) => return false,
     };

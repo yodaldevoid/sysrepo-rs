@@ -50,14 +50,14 @@ pub enum LogLevel {
 
 /// Conn Flag.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SrConnFlag {
+pub enum ConnFlag {
     Default = ffi::sr_conn_flag_t::SR_CONN_DEFAULT as isize,
     CacheRunning = ffi::sr_conn_flag_t::SR_CONN_CACHE_RUNNING as isize,
 }
 
 /// Datastore.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SrDatastore {
+pub enum Datastore {
     Startup = ffi::sr_datastore_t::SR_DS_STARTUP as isize,
     Running = ffi::sr_datastore_t::SR_DS_RUNNING as isize,
     Candidate = ffi::sr_datastore_t::SR_DS_CANDIDATE as isize,
@@ -66,7 +66,7 @@ pub enum SrDatastore {
 
 /// Sysrepo Type.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SrType {
+pub enum Type {
     Unknown = ffi::sr_val_type_t::SR_UNKNOWN_T as isize,
     List = ffi::sr_val_type_t::SR_LIST_T as isize,
     Container = ffi::sr_val_type_t::SR_CONTAINER_T as isize,
@@ -95,7 +95,7 @@ pub enum SrType {
 
 /// Get Oper Flag.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SrGetOperFlag {
+pub enum GetOperFlag {
     Default = ffi::sr_get_oper_flag_t::SR_OPER_DEFAULT as isize,
     NoState = ffi::sr_get_oper_flag_t::SR_OPER_NO_STATE as isize,
     NoConfig = ffi::sr_get_oper_flag_t::SR_OPER_NO_CONFIG as isize,
@@ -106,7 +106,7 @@ pub enum SrGetOperFlag {
 
 /// Edit Flag.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SrEditFlag {
+pub enum EditFlag {
     Default = ffi::sr_edit_flag_t::SR_EDIT_DEFAULT as isize,
     NonRecursive = ffi::sr_edit_flag_t::SR_EDIT_NON_RECURSIVE as isize,
     Strict = ffi::sr_edit_flag_t::SR_EDIT_STRICT as isize,
@@ -115,7 +115,7 @@ pub enum SrEditFlag {
 
 /// Move Position.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SrMovePosition {
+pub enum MovePosition {
     Before = ffi::sr_move_position_t::SR_MOVE_BEFORE as isize,
     After = ffi::sr_move_position_t::SR_MOVE_AFTER as isize,
     First = ffi::sr_move_position_t::SR_MOVE_FIRST as isize,
@@ -124,7 +124,7 @@ pub enum SrMovePosition {
 
 /// Subscribe Flag.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SrSubcribeFlag {
+pub enum SubcribeFlag {
     Default = ffi::sr_subscr_flag_t::SR_SUBSCR_DEFAULT as isize,
     NoThread = ffi::sr_subscr_flag_t::SR_SUBSCR_NO_THREAD as isize,
     Passive = ffi::sr_subscr_flag_t::SR_SUBSCR_PASSIVE as isize,
@@ -136,7 +136,7 @@ pub enum SrSubcribeFlag {
 
 /// Event.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SrEvent {
+pub enum Event {
     Update = ffi::sr_event_t::SR_EV_UPDATE as isize,
     Change = ffi::sr_event_t::SR_EV_CHANGE as isize,
     Done = ffi::sr_event_t::SR_EV_DONE as isize,
@@ -145,31 +145,31 @@ pub enum SrEvent {
     Rpc = ffi::sr_event_t::SR_EV_RPC as isize,
 }
 
-impl TryFrom<u32> for SrEvent {
+impl TryFrom<u32> for Event {
     type Error = &'static str;
 
     fn try_from(t: u32) -> std::result::Result<Self, Self::Error> {
         match t {
-            ffi::sr_event_t::SR_EV_UPDATE => Ok(SrEvent::Update),
-            ffi::sr_event_t::SR_EV_CHANGE => Ok(SrEvent::Change),
-            ffi::sr_event_t::SR_EV_DONE => Ok(SrEvent::Done),
-            ffi::sr_event_t::SR_EV_ABORT => Ok(SrEvent::Abort),
-            ffi::sr_event_t::SR_EV_ENABLED => Ok(SrEvent::Enabled),
-            ffi::sr_event_t::SR_EV_RPC => Ok(SrEvent::Rpc),
-            _ => Err("Invalid SrEvent"),
+            ffi::sr_event_t::SR_EV_UPDATE => Ok(Event::Update),
+            ffi::sr_event_t::SR_EV_CHANGE => Ok(Event::Change),
+            ffi::sr_event_t::SR_EV_DONE => Ok(Event::Done),
+            ffi::sr_event_t::SR_EV_ABORT => Ok(Event::Abort),
+            ffi::sr_event_t::SR_EV_ENABLED => Ok(Event::Enabled),
+            ffi::sr_event_t::SR_EV_RPC => Ok(Event::Rpc),
+            _ => Err("Invalid Event"),
         }
     }
 }
 
-impl fmt::Display for SrEvent {
+impl fmt::Display for Event {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let s = match self {
-            SrEvent::Update => "Update",
-            SrEvent::Change => "Change",
-            SrEvent::Done => "Done",
-            SrEvent::Abort => "Abort",
-            SrEvent::Enabled => "Enabled",
-            SrEvent::Rpc => "RPC",
+            Event::Update => "Update",
+            Event::Change => "Change",
+            Event::Done => "Done",
+            Event::Abort => "Abort",
+            Event::Enabled => "Enabled",
+            Event::Rpc => "RPC",
         };
         write!(f, "{}", s)
     }
@@ -177,34 +177,34 @@ impl fmt::Display for SrEvent {
 
 /// Change Oper.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SrChangeOper {
+pub enum ChangeOper {
     Created = ffi::sr_change_oper_t::SR_OP_CREATED as isize,
     Modified = ffi::sr_change_oper_t::SR_OP_MODIFIED as isize,
     Deleted = ffi::sr_change_oper_t::SR_OP_DELETED as isize,
     Moved = ffi::sr_change_oper_t::SR_OP_MOVED as isize,
 }
 
-impl TryFrom<u32> for SrChangeOper {
+impl TryFrom<u32> for ChangeOper {
     type Error = &'static str;
 
     fn try_from(t: u32) -> std::result::Result<Self, Self::Error> {
         match t {
-            ffi::sr_change_oper_t::SR_OP_CREATED => Ok(SrChangeOper::Created),
-            ffi::sr_change_oper_t::SR_OP_MODIFIED => Ok(SrChangeOper::Modified),
-            ffi::sr_change_oper_t::SR_OP_DELETED => Ok(SrChangeOper::Deleted),
-            ffi::sr_change_oper_t::SR_OP_MOVED => Ok(SrChangeOper::Moved),
-            _ => Err("Invalid SrChangeOper"),
+            ffi::sr_change_oper_t::SR_OP_CREATED => Ok(ChangeOper::Created),
+            ffi::sr_change_oper_t::SR_OP_MODIFIED => Ok(ChangeOper::Modified),
+            ffi::sr_change_oper_t::SR_OP_DELETED => Ok(ChangeOper::Deleted),
+            ffi::sr_change_oper_t::SR_OP_MOVED => Ok(ChangeOper::Moved),
+            _ => Err("Invalid ChangeOper"),
         }
     }
 }
 
-impl fmt::Display for SrChangeOper {
+impl fmt::Display for ChangeOper {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let s = match self {
-            SrChangeOper::Created => "Created",
-            SrChangeOper::Modified => "Modified",
-            SrChangeOper::Deleted => "Deleted",
-            SrChangeOper::Moved => "Moved",
+            ChangeOper::Created => "Created",
+            ChangeOper::Modified => "Modified",
+            ChangeOper::Deleted => "Deleted",
+            ChangeOper::Moved => "Moved",
         };
         write!(f, "{}", s)
     }
@@ -212,7 +212,7 @@ impl fmt::Display for SrChangeOper {
 
 /// Notification Type.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SrNotifType {
+pub enum NotifType {
     Realtime = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REALTIME as isize,
     Replay = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY as isize,
     ReplayComplete = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY_COMPLETE as isize,
@@ -222,33 +222,33 @@ pub enum SrNotifType {
     Resumed = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED as isize,
 }
 
-impl TryFrom<u32> for SrNotifType {
+impl TryFrom<u32> for NotifType {
     type Error = &'static str;
 
     fn try_from(t: u32) -> std::result::Result<Self, Self::Error> {
         match t {
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REALTIME => Ok(SrNotifType::Realtime),
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY => Ok(SrNotifType::Replay),
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY_COMPLETE => Ok(SrNotifType::ReplayComplete),
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_TERMINATED => Ok(SrNotifType::Terminated),
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_MODIFIED => Ok(SrNotifType::Modified),
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED => Ok(SrNotifType::Suspended),
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED => Ok(SrNotifType::Resumed),
-            _ => Err("Invalid SrNotifType"),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REALTIME => Ok(NotifType::Realtime),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY => Ok(NotifType::Replay),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY_COMPLETE => Ok(NotifType::ReplayComplete),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_TERMINATED => Ok(NotifType::Terminated),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_MODIFIED => Ok(NotifType::Modified),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED => Ok(NotifType::Suspended),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED => Ok(NotifType::Resumed),
+            _ => Err("Invalid NotifType"),
         }
     }
 }
 
 /// Typedefs.
-pub type SrSessionId = *const ffi::sr_session_ctx_t;
-pub type SrSubscrId = *const ffi::sr_subscription_ctx_t;
+pub type SessionId = *const ffi::sr_session_ctx_t;
+pub type SubscrId = *const ffi::sr_subscription_ctx_t;
 
 /// Single Sysrepo Value.
-pub struct SrValue {
+pub struct Value {
     value: *mut ffi::sr_val_t,
 }
 
-impl SrValue {
+impl Value {
     pub fn from(value: *mut ffi::sr_val_t) -> Self {
         Self { value: value }
     }
@@ -258,7 +258,7 @@ impl SrValue {
     }
 }
 
-impl Drop for SrValue {
+impl Drop for Value {
     fn drop(&mut self) {
         unsafe {
             ffi::sr_free_val(self.value);
@@ -268,7 +268,7 @@ impl Drop for SrValue {
 
 /// Slice of Sysrepo Value.
 ///  The size of slice cannot change.
-pub struct SrValueSlice {
+pub struct ValueSlice {
     /// Pointer to raw sr_val_t array.
     values: *mut ffi::sr_val_t,
 
@@ -279,7 +279,7 @@ pub struct SrValueSlice {
     owned: bool,
 }
 
-impl SrValueSlice {
+impl ValueSlice {
     pub fn new(capacity: size_t, owned: bool) -> Self {
         Self {
             values: unsafe {
@@ -336,7 +336,7 @@ impl SrValueSlice {
     }
 }
 
-impl Drop for SrValueSlice {
+impl Drop for ValueSlice {
     fn drop(&mut self) {
         if self.owned {
             unsafe {
@@ -364,17 +364,17 @@ pub fn log_syslog(app_name: &str, log_level: LogLevel) -> Result<()> {
 }
 
 /// Sysrepo connection.
-pub struct SrConn {
+pub struct Conn {
     /// Raw Pointer to Connection.
     conn: *mut ffi::sr_conn_ctx_t,
 
     /// Sessions.
-    sessions: HashMap<SrSessionId, SrSession>,
+    sessions: HashMap<SessionId, Session>,
 }
 
-impl SrConn {
+impl Conn {
     /// Constructor.
-    pub fn new(opts: ffi::sr_conn_options_t) -> Result<SrConn> {
+    pub fn new(opts: ffi::sr_conn_options_t) -> Result<Conn> {
         let mut conn = std::ptr::null_mut();
 
         let rc = unsafe { ffi::sr_connect(opts, &mut conn) };
@@ -383,7 +383,7 @@ impl SrConn {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            Ok(SrConn {
+            Ok(Conn {
                 conn: conn,
                 sessions: HashMap::new(),
             })
@@ -399,22 +399,22 @@ impl SrConn {
     }
 
     /// Add session to map.
-    pub fn insert_session(&mut self, id: SrSessionId, sess: SrSession) {
+    pub fn insert_session(&mut self, id: SessionId, sess: Session) {
         self.sessions.insert(id, sess);
     }
 
     /// Add session to map.
-    pub fn remove_session(&mut self, id: &SrSessionId) {
+    pub fn remove_session(&mut self, id: &SessionId) {
         self.sessions.remove(id);
     }
 
     /// Lookup session from map.
-    pub fn lookup_session(&mut self, id: &SrSessionId) -> Option<&mut SrSession> {
+    pub fn lookup_session(&mut self, id: &SessionId) -> Option<&mut Session> {
         self.sessions.get_mut(id)
     }
 
     /// Start session.
-    pub fn start_session(&mut self, ds: SrDatastore) -> Result<&mut SrSession> {
+    pub fn start_session(&mut self, ds: Datastore) -> Result<&mut Session> {
         let mut sess = std::ptr::null_mut();
         let rc = unsafe { ffi::sr_session_start(self.conn, ds as u32, &mut sess) };
         let rc = rc as ffi::sr_error_t::Type;
@@ -422,8 +422,8 @@ impl SrConn {
             Err(Error { errcode: rc })
         } else {
             let id = sess;
-            self.insert_session(id, SrSession::from(sess, true));
-            Ok(self.sessions.get_mut(&(id as SrSessionId)).unwrap())
+            self.insert_session(id, Session::from(sess, true));
+            Ok(self.sessions.get_mut(&(id as SessionId)).unwrap())
         }
     }
 
@@ -439,7 +439,7 @@ impl SrConn {
     }
 }
 
-impl Drop for SrConn {
+impl Drop for Conn {
     fn drop(&mut self) {
         self.sessions.drain();
         self.disconnect();
@@ -448,7 +448,7 @@ impl Drop for SrConn {
 
 /// A wrapper around `Context` to ensure it is released back to sysrepo on drop.
 pub struct AcquiredContext<'a> {
-    conn: &'a SrConn,
+    conn: &'a Conn,
     ctx: ManuallyDrop<Context>,
 }
 
@@ -469,7 +469,7 @@ impl Drop for AcquiredContext<'_> {
 }
 
 /// Sysrepo session.
-pub struct SrSession {
+pub struct Session {
     /// Raw Pointer to session.
     sess: *mut ffi::sr_session_ctx_t,
 
@@ -477,10 +477,10 @@ pub struct SrSession {
     owned: bool,
 
     /// Map from raw pointer to subscription.
-    subscrs: HashMap<SrSubscrId, SrSubscr>,
+    subscrs: HashMap<SubscrId, Subscr>,
 }
 
-impl SrSession {
+impl Session {
     /// Constructor.
     pub fn new() -> Self {
         Self {
@@ -514,14 +514,14 @@ impl SrSession {
     }
 
     /// Insert subscription.
-    pub fn insert_subscription(&mut self, subscr: SrSubscr) -> SrSubscrId {
+    pub fn insert_subscription(&mut self, subscr: Subscr) -> SubscrId {
         let id = subscr.id();
         self.subscrs.insert(id, subscr);
         id
     }
 
     /// Remove subscription.
-    pub fn remove_subscription(&mut self, subscr: &SrSubscr) {
+    pub fn remove_subscription(&mut self, subscr: &Subscr) {
         let id = subscr.id();
         self.subscrs.remove(&id);
     }
@@ -585,7 +585,7 @@ impl SrSession {
         xpath: &str,
         timeout: Option<Duration>,
         opts: u32,
-    ) -> Result<SrValueSlice> {
+    ) -> Result<ValueSlice> {
         let xpath = str_to_cstring(xpath)?;
         let timeout_ms = timeout.map_or(0, |timeout| timeout.as_millis() as u32);
         let mut values_count: size_t = 0;
@@ -605,7 +605,7 @@ impl SrSession {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            Ok(SrValueSlice::from(values, values_count, true))
+            Ok(ValueSlice::from(values, values_count, true))
         }
     }
 
@@ -658,9 +658,9 @@ impl SrSession {
         stop_time: Option<*mut timespec>,
         callback: F,
         opts: ffi::sr_subscr_options_t,
-    ) -> Result<&mut SrSubscr>
+    ) -> Result<&mut Subscr>
     where
-        F: FnMut(SrSession, u32, SrNotifType, &str, SrValueSlice, *mut timespec) + 'static,
+        F: FnMut(Session, u32, NotifType, &str, ValueSlice, *mut timespec) + 'static,
     {
         let mod_name = str_to_cstring(mod_name)?;
         let xpath = match xpath {
@@ -681,7 +681,7 @@ impl SrSession {
                 xpath_ptr,
                 start_time,
                 stop_time,
-                Some(SrSession::call_event_notif::<F>),
+                Some(Session::call_event_notif::<F>),
                 data as *mut _,
                 opts,
                 &mut subscr,
@@ -692,7 +692,7 @@ impl SrSession {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            let id = self.insert_subscription(SrSubscr::from(subscr));
+            let id = self.insert_subscription(Subscr::from(subscr));
             Ok(self.subscrs.get_mut(&id).unwrap())
         }
     }
@@ -707,15 +707,15 @@ impl SrSession {
         timestamp: *mut timespec,
         private_data: *mut c_void,
     ) where
-        F: FnMut(SrSession, u32, SrNotifType, &str, SrValueSlice, *mut timespec),
+        F: FnMut(Session, u32, NotifType, &str, ValueSlice, *mut timespec),
     {
         let callback_ptr = private_data as *mut F;
         let callback = &mut *callback_ptr;
 
         let path = CStr::from_ptr(path).to_str().unwrap();
-        let sr_values = SrValueSlice::from(values as *mut ffi::sr_val_t, values_cnt, false);
-        let sess = SrSession::from(sess, false);
-        let notif_type = SrNotifType::try_from(notif_type).expect("Convert error");
+        let sr_values = ValueSlice::from(values as *mut ffi::sr_val_t, values_cnt, false);
+        let sess = Session::from(sess, false);
+        let notif_type = NotifType::try_from(notif_type).expect("Convert error");
 
         callback(sess, sub_id, notif_type, path, sr_values, timestamp);
     }
@@ -727,9 +727,9 @@ impl SrSession {
         callback: F,
         priority: u32,
         opts: ffi::sr_subscr_options_t,
-    ) -> Result<&mut SrSubscr>
+    ) -> Result<&mut Subscr>
     where
-        F: FnMut(SrSession, u32, &str, SrValueSlice, SrEvent, u32) -> SrValueSlice + 'static,
+        F: FnMut(Session, u32, &str, ValueSlice, Event, u32) -> ValueSlice + 'static,
     {
         let mut subscr: *mut ffi::sr_subscription_ctx_t =
             unsafe { zeroed::<*mut ffi::sr_subscription_ctx_t>() };
@@ -742,7 +742,7 @@ impl SrSession {
                     ffi::sr_rpc_subscribe(
                         self.sess,
                         xpath.as_ptr(),
-                        Some(SrSession::call_rpc::<F>),
+                        Some(Session::call_rpc::<F>),
                         data as *mut _,
                         priority,
                         opts,
@@ -752,7 +752,7 @@ impl SrSession {
                 None => ffi::sr_rpc_subscribe(
                     self.sess,
                     std::ptr::null_mut(),
-                    Some(SrSession::call_rpc::<F>),
+                    Some(Session::call_rpc::<F>),
                     data as *mut _,
                     priority,
                     opts,
@@ -765,7 +765,7 @@ impl SrSession {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            let id = self.insert_subscription(SrSubscr::from(subscr));
+            let id = self.insert_subscription(Subscr::from(subscr));
             Ok(self.subscrs.get_mut(&id).unwrap())
         }
     }
@@ -783,15 +783,15 @@ impl SrSession {
         private_data: *mut c_void,
     ) -> c_int
     where
-        F: FnMut(SrSession, u32, &str, SrValueSlice, SrEvent, u32) -> SrValueSlice,
+        F: FnMut(Session, u32, &str, ValueSlice, Event, u32) -> ValueSlice,
     {
         let callback_ptr = private_data as *mut F;
         let callback = &mut *callback_ptr;
 
         let op_path = CStr::from_ptr(op_path).to_str().unwrap();
-        let inputs = SrValueSlice::from(input as *mut ffi::sr_val_t, input_cnt, false);
-        let sess = SrSession::from(sess, false);
-        let event = SrEvent::try_from(event).expect("Convert error");
+        let inputs = ValueSlice::from(input as *mut ffi::sr_val_t, input_cnt, false);
+        let sess = Session::from(sess, false);
+        let event = Event::try_from(event).expect("Convert error");
 
         let sr_output = callback(sess, sub_id, op_path, inputs, event, request_id);
         *output = sr_output.as_ptr();
@@ -807,7 +807,7 @@ impl SrSession {
         path: &str,
         callback: F,
         opts: ffi::sr_subscr_options_t,
-    ) -> Result<&mut SrSubscr>
+    ) -> Result<&mut Subscr>
     where
         F: FnMut(&mut DataTree<'_>, u32, &str, &str, Option<&str>, u32) + 'static,
     {
@@ -822,7 +822,7 @@ impl SrSession {
                 self.sess,
                 mod_name.as_ptr(),
                 path.as_ptr(),
-                Some(SrSession::call_get_items::<F>),
+                Some(Session::call_get_items::<F>),
                 data as *mut _,
                 opts,
                 &mut subscr,
@@ -833,7 +833,7 @@ impl SrSession {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            let id = self.insert_subscription(SrSubscr::from(subscr));
+            let id = self.insert_subscription(Subscr::from(subscr));
             Ok(self.subscrs.get_mut(&id).unwrap())
         }
     }
@@ -892,9 +892,9 @@ impl SrSession {
         callback: F,
         priority: u32,
         opts: ffi::sr_subscr_options_t,
-    ) -> Result<&mut SrSubscr>
+    ) -> Result<&mut Subscr>
     where
-        F: FnMut(SrSession, u32, &str, Option<&str>, SrEvent, u32) -> () + 'static,
+        F: FnMut(Session, u32, &str, Option<&str>, Event, u32) -> () + 'static,
     {
         let mut subscr: *mut ffi::sr_subscription_ctx_t =
             unsafe { zeroed::<*mut ffi::sr_subscription_ctx_t>() };
@@ -911,7 +911,7 @@ impl SrSession {
                 self.sess,
                 mod_name.as_ptr(),
                 path_ptr,
-                Some(SrSession::call_module_change::<F>),
+                Some(Session::call_module_change::<F>),
                 data as *mut _,
                 priority,
                 opts,
@@ -923,7 +923,7 @@ impl SrSession {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            let id = self.insert_subscription(SrSubscr::from(subscr));
+            let id = self.insert_subscription(Subscr::from(subscr));
             Ok(self.subscrs.get_mut(&id).unwrap())
         }
     }
@@ -938,7 +938,7 @@ impl SrSession {
         private_data: *mut c_void,
     ) -> c_int
     where
-        F: FnMut(SrSession, u32, &str, Option<&str>, SrEvent, u32) -> (),
+        F: FnMut(Session, u32, &str, Option<&str>, Event, u32) -> (),
     {
         let callback_ptr = private_data as *mut F;
         let callback = &mut *callback_ptr;
@@ -949,8 +949,8 @@ impl SrSession {
         } else {
             Some(CStr::from_ptr(path).to_str().unwrap())
         };
-        let event = SrEvent::try_from(event).expect("Convert error");
-        let sess = SrSession::from(sess, false);
+        let event = Event::try_from(event).expect("Convert error");
+        let sess = Session::from(sess, false);
 
         callback(sess, sub_id, mod_name, path, event, request_id);
 
@@ -958,7 +958,7 @@ impl SrSession {
     }
 
     /// Get changes iter.
-    pub fn get_changes_iter(&self, path: &str) -> Result<SrChangeIter> {
+    pub fn get_changes_iter(&self, path: &str) -> Result<ChangeIter> {
         let mut it = unsafe { zeroed::<*mut ffi::sr_change_iter_t>() };
 
         let path = str_to_cstring(path)?;
@@ -968,7 +968,7 @@ impl SrSession {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            Ok(SrChangeIter::from(it))
+            Ok(ChangeIter::from(it))
         }
     }
 
@@ -994,7 +994,7 @@ impl SrSession {
         path: &str,
         input: Option<Vec<ffi::sr_val_t>>,
         timeout: Option<Duration>,
-    ) -> Result<SrValueSlice> {
+    ) -> Result<ValueSlice> {
         let path = str_to_cstring(path)?;
         let (input, input_cnt) = match input {
             Some(mut input) => (input.as_mut_ptr(), input.len() as size_t),
@@ -1021,15 +1021,15 @@ impl SrSession {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            Ok(SrValueSlice::from(output, output_count, true))
+            Ok(ValueSlice::from(output, output_count, true))
         }
     }
 
     /// Return oper, old_value, new_value with next iter.
     pub fn get_change_next(
         &mut self,
-        iter: &mut SrChangeIter,
-    ) -> Option<(SrChangeOper, SrValue, SrValue)> {
+        iter: &mut ChangeIter,
+    ) -> Option<(ChangeOper, Value, Value)> {
         let mut oper: ffi::sr_change_oper_t::Type = 0;
         let mut old_value: *mut ffi::sr_val_t = std::ptr::null_mut();
         let mut new_value: *mut ffi::sr_val_t = std::ptr::null_mut();
@@ -1046,8 +1046,8 @@ impl SrSession {
 
         let rc = rc as ffi::sr_error_t::Type;
         if rc == ffi::sr_error_t::SR_ERR_OK {
-            match SrChangeOper::try_from(oper) {
-                Ok(oper) => Some((oper, SrValue::from(old_value), SrValue::from(new_value))),
+            match ChangeOper::try_from(oper) {
+                Ok(oper) => Some((oper, Value::from(old_value), Value::from(new_value))),
                 Err(_) => None,
             }
         } else {
@@ -1056,7 +1056,7 @@ impl SrSession {
     }
 }
 
-impl Drop for SrSession {
+impl Drop for Session {
     fn drop(&mut self) {
         if self.owned {
             self.subscrs.drain();
@@ -1069,12 +1069,12 @@ impl Drop for SrSession {
 }
 
 /// Sysrepo Subscription.
-pub struct SrSubscr {
+pub struct Subscr {
     /// Raw Pointer to subscription.
     subscr: *mut ffi::sr_subscription_ctx_t,
 }
 
-impl SrSubscr {
+impl Subscr {
     pub fn new() -> Self {
         Self {
             subscr: std::ptr::null_mut(),
@@ -1085,12 +1085,12 @@ impl SrSubscr {
         Self { subscr: subscr }
     }
 
-    pub fn id(&self) -> SrSubscrId {
+    pub fn id(&self) -> SubscrId {
         self.subscr
     }
 }
 
-impl Drop for SrSubscr {
+impl Drop for Subscr {
     fn drop(&mut self) {
         unsafe {
             ffi::sr_unsubscribe(self.subscr);
@@ -1099,12 +1099,12 @@ impl Drop for SrSubscr {
 }
 
 /// Sysrepo Changes Iterator.
-pub struct SrChangeIter {
+pub struct ChangeIter {
     /// Raw pointer to iter.
     iter: *mut ffi::sr_change_iter_t,
 }
 
-impl SrChangeIter {
+impl ChangeIter {
     pub fn from(iter: *mut ffi::sr_change_iter_t) -> Self {
         Self { iter: iter }
     }
@@ -1114,7 +1114,7 @@ impl SrChangeIter {
     }
 }
 
-impl Drop for SrChangeIter {
+impl Drop for ChangeIter {
     fn drop(&mut self) {
         unsafe {
             ffi::sr_free_change_iter(self.iter);

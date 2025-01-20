@@ -24,26 +24,26 @@ fn print_help(program: &str) {
 }
 
 /// Print change.
-fn print_change(oper: SrChangeOper, old_val: SrValue, new_val: SrValue) {
+fn print_change(oper: ChangeOper, old_val: Value, new_val: Value) {
     let old_val = unsafe { old_val.value().as_ref() };
     let new_val = unsafe { new_val.value().as_ref() };
 
     match oper {
-        SrChangeOper::Created => {
+        ChangeOper::Created => {
             print!("CREATED: ");
             print_val(new_val.unwrap());
         }
-        SrChangeOper::Deleted => {
+        ChangeOper::Deleted => {
             print!("DELETED: ");
             print_val(old_val.unwrap());
         }
-        SrChangeOper::Modified => {
+        ChangeOper::Modified => {
             print!("MODIFIED: ");
             print_val(old_val.unwrap());
             print!("to ");
             print_val(new_val.unwrap());
         }
-        SrChangeOper::Moved => {
+        ChangeOper::Moved => {
             let new_val = new_val.unwrap();
             let xpath = unsafe { CStr::from_ptr(new_val.xpath).to_str().unwrap() };
             println!("MOVED: {}", xpath);
@@ -52,7 +52,7 @@ fn print_change(oper: SrChangeOper, old_val: SrValue, new_val: SrValue) {
 }
 
 /// Print current config.
-fn print_current_config(sess: &mut SrSession, mod_name: &str) {
+fn print_current_config(sess: &mut Session, mod_name: &str) {
     let xpath = format!("/{}:*//.", mod_name);
     let xpath = &xpath[..];
 
@@ -100,13 +100,13 @@ fn run() -> bool {
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let mut sr = match SrConn::new(0) {
+    let mut sr = match Conn::new(0) {
         Ok(sr) => sr,
         Err(_) => return false,
     };
 
     // Start session.
-    let mut sess = match sr.start_session(SrDatastore::Running) {
+    let mut sess = match sr.start_session(Datastore::Running) {
         Ok(sess) => sess,
         Err(_) => return false,
     };
@@ -117,11 +117,11 @@ fn run() -> bool {
     println!("");
     print_current_config(&mut sess, &mod_name);
 
-    let f = |sess: SrSession,
+    let f = |sess: Session,
              sub_id: u32,
              mod_name: &str,
              _path: Option<&str>,
-             event: SrEvent,
+             event: Event,
              _request_id: u32|
      -> () {
         let mut sess = sess;
@@ -135,8 +135,7 @@ fn run() -> bool {
         println!("");
         println!(
             " ========== EVENT ({}) {} CHANGES: ====================================",
-            sub_id,
-            event
+            sub_id, event
         );
         println!("");
 
@@ -147,7 +146,7 @@ fn run() -> bool {
         println!("");
         print!(" ========== END OF CHANGES =======================================");
 
-        if event == SrEvent::Done {
+        if event == Event::Done {
             println!("");
             println!("");
             println!(" ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========");

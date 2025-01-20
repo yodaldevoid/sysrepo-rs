@@ -34,13 +34,13 @@ fn run() -> bool {
     }
 
     let xpath = args[1].clone();
-    let mut ds = SrDatastore::Running;
+    let mut ds = Datastore::Running;
 
     if args.len() == 3 {
         if args[2] == "running" {
-            ds = SrDatastore::Running;
+            ds = Datastore::Running;
         } else if args[2] == "operational" {
-            ds = SrDatastore::Operational;
+            ds = Datastore::Operational;
         } else {
             println!("Invalid datastore {}.", args[2]);
             return false;
@@ -50,7 +50,7 @@ fn run() -> bool {
     println!(
         r#"Application will get "{}" from "{}" datastore."#,
         xpath,
-        if ds == SrDatastore::Running {
+        if ds == Datastore::Running {
             "running"
         } else {
             "operational"
@@ -61,7 +61,7 @@ fn run() -> bool {
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let mut sr = match SrConn::new(0) {
+    let mut sr = match Conn::new(0) {
         Ok(sr) => sr,
         Err(_) => return false,
     };
@@ -73,19 +73,21 @@ fn run() -> bool {
     };
 
     // Setup libyang context.
-    let ctx = Arc::new(Context::new(ContextFlags::NO_YANGLIBRARY).expect("Failed to create context"));
+    let ctx =
+        Arc::new(Context::new(ContextFlags::NO_YANGLIBRARY).expect("Failed to create context"));
 
     // Get the data.
-    let data = sess.get_data(&ctx, &xpath, None, None, 0).expect("Failed to get data");
+    let data = sess
+        .get_data(&ctx, &xpath, None, None, 0)
+        .expect("Failed to get data");
 
     // Print data tree in the XML format.
-    data
-        .print_file(
-            std::io::stdout(),
-            DataFormat::XML,
-            DataPrinterFlags::WD_ALL | DataPrinterFlags::WITH_SIBLINGS,
-        )
-        .expect("Failed to print data tree");
+    data.print_file(
+        std::io::stdout(),
+        DataFormat::XML,
+        DataPrinterFlags::WD_ALL | DataPrinterFlags::WITH_SIBLINGS,
+    )
+    .expect("Failed to print data tree");
 
     true
 }

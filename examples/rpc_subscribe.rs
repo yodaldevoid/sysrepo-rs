@@ -45,27 +45,29 @@ fn run() -> bool {
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let mut sr = match SrConn::new(0) {
+    let mut sr = match Conn::new(0) {
         Ok(sr) => sr,
         Err(_) => return false,
     };
 
     // Start session.
-    let sess = match sr.start_session(SrDatastore::Running) {
+    let sess = match sr.start_session(Datastore::Running) {
         Ok(sess) => sess,
         Err(_) => return false,
     };
 
     // Callback function.
-    let f = |_sess: SrSession,
+    let f = |_sess: Session,
              _sub_id: u32,
              _op_path: &str,
-             _inputs: SrValueSlice,
-             _event: SrEvent,
+             _inputs: ValueSlice,
+             _event: Event,
              _request_id: u32|
-     -> SrValueSlice {
-        let mut sr_output = SrValueSlice::new(1, false);
-        sr_output.set_int64_value(0, false, "/examples:oper/ret", -123456).unwrap();
+     -> ValueSlice {
+        let mut sr_output = ValueSlice::new(1, false);
+        sr_output
+            .set_int64_value(0, false, "/examples:oper/ret", -123456)
+            .unwrap();
         sr_output
     };
 

@@ -36,13 +36,13 @@ fn run() -> bool {
     }
 
     let xpath = args[1].clone();
-    let mut ds = SrDatastore::Running;
+    let mut ds = Datastore::Running;
 
     if args.len() == 3 {
         if args[2] == "running" {
-            ds = SrDatastore::Running;
+            ds = Datastore::Running;
         } else if args[2] == "operational" {
-            ds = SrDatastore::Operational;
+            ds = Datastore::Operational;
         } else {
             println!("Invalid datastore {}.", args[2]);
             return false;
@@ -52,7 +52,7 @@ fn run() -> bool {
     println!(
         r#"Application will get "{}" from "{}" datastore."#,
         xpath,
-        if ds == SrDatastore::Running {
+        if ds == Datastore::Running {
             "running"
         } else {
             "operational"
@@ -63,7 +63,7 @@ fn run() -> bool {
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let mut sr = match SrConn::new(0) {
+    let mut sr = match Conn::new(0) {
         Ok(sr) => sr,
         Err(_) => return false,
     };
