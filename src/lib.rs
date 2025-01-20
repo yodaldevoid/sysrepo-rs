@@ -3,9 +3,10 @@ use std::convert::TryFrom;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
-use std::mem::{self, ManuallyDrop, zeroed};
+use std::mem::{self, ManuallyDrop};
 use std::ops::Deref;
 use std::os::raw::{c_char, c_int, c_void};
+use std::ptr;
 use std::slice;
 use std::time::Duration;
 use std::sync::Arc;
@@ -375,7 +376,7 @@ pub struct Conn {
 impl Conn {
     /// Constructor.
     pub fn new(opts: ffi::sr_conn_options_t) -> Result<Conn> {
-        let mut conn = std::ptr::null_mut();
+        let mut conn = ptr::null_mut();
 
         let rc = unsafe { ffi::sr_connect(opts, &mut conn) };
 
@@ -395,7 +396,7 @@ impl Conn {
         unsafe {
             ffi::sr_disconnect(self.conn);
         }
-        self.conn = std::ptr::null_mut();
+        self.conn = ptr::null_mut();
     }
 
     /// Add session to map.
@@ -415,7 +416,7 @@ impl Conn {
 
     /// Start session.
     pub fn start_session(&mut self, ds: Datastore) -> Result<&mut Session> {
-        let mut sess = std::ptr::null_mut();
+        let mut sess = ptr::null_mut();
         let rc = unsafe { ffi::sr_session_start(self.conn, ds as u32, &mut sess) };
         let rc = rc as ffi::sr_error_t::Type;
         if rc != ffi::sr_error_t::SR_ERR_OK {
@@ -484,7 +485,7 @@ impl Session {
     /// Constructor.
     pub fn new() -> Self {
         Self {
-            sess: std::ptr::null_mut(),
+            sess: ptr::null_mut(),
             owned: true,
             subscrs: HashMap::new(),
         }
@@ -540,7 +541,7 @@ impl Session {
         let timeout_ms = timeout.map_or(0, |timeout| timeout.as_millis() as u32);
 
         // SAFETY: data is used as output by sr_get_data and is not read
-        let mut data: *mut ffi::sr_data_t = unsafe { zeroed::<*mut ffi::sr_data_t>() };
+        let mut data = ptr::null_mut();
 
         let rc = unsafe {
             ffi::sr_get_data(
@@ -589,7 +590,7 @@ impl Session {
         let xpath = str_to_cstring(xpath)?;
         let timeout_ms = timeout.map_or(0, |timeout| timeout.as_millis() as u32);
         let mut values_count: size_t = 0;
-        let mut values: *mut ffi::sr_val_t = unsafe { zeroed::<*mut ffi::sr_val_t>() };
+        let mut values = ptr::null_mut();
 
         let rc = unsafe {
             ffi::sr_get_items(
@@ -623,7 +624,7 @@ impl Session {
             Some(orig) => Some(str_to_cstring(orig)?),
             None => None,
         };
-        let origin_ptr = origin.map_or(std::ptr::null(), |orig| orig.as_ptr());
+        let origin_ptr = origin.map_or(ptr::null(), |orig| orig.as_ptr());
 
         let rc = unsafe {
             ffi::sr_set_item_str(self.sess, path.as_ptr(), value.as_ptr(), origin_ptr, opts)
@@ -667,12 +668,11 @@ impl Session {
             Some(path) => Some(str_to_cstring(&path)?),
             None => None,
         };
-        let xpath_ptr = xpath.map_or(std::ptr::null(), |xpath| xpath.as_ptr());
-        let start_time = start_time.unwrap_or(std::ptr::null_mut());
-        let stop_time = stop_time.unwrap_or(std::ptr::null_mut());
+        let xpath_ptr = xpath.map_or(ptr::null(), |xpath| xpath.as_ptr());
+        let start_time = start_time.unwrap_or(ptr::null_mut());
+        let stop_time = stop_time.unwrap_or(ptr::null_mut());
 
-        let mut subscr: *mut ffi::sr_subscription_ctx_t =
-            unsafe { zeroed::<*mut ffi::sr_subscription_ctx_t>() };
+        let mut subscr = ptr::null_mut();
         let data = Box::into_raw(Box::new(callback));
         let rc = unsafe {
             ffi::sr_notif_subscribe(
@@ -731,8 +731,7 @@ impl Session {
     where
         F: FnMut(Session, u32, &str, ValueSlice, Event, u32) -> ValueSlice + 'static,
     {
-        let mut subscr: *mut ffi::sr_subscription_ctx_t =
-            unsafe { zeroed::<*mut ffi::sr_subscription_ctx_t>() };
+        let mut subscr = ptr::null_mut();
         let data = Box::into_raw(Box::new(callback));
 
         let rc = unsafe {
@@ -751,7 +750,7 @@ impl Session {
                 }
                 None => ffi::sr_rpc_subscribe(
                     self.sess,
-                    std::ptr::null_mut(),
+                    ptr::null_mut(),
                     Some(Session::call_rpc::<F>),
                     data as *mut _,
                     priority,
@@ -811,8 +810,7 @@ impl Session {
     where
         F: FnMut(&mut DataTree<'_>, u32, &str, &str, Option<&str>, u32) + 'static,
     {
-        let mut subscr: *mut ffi::sr_subscription_ctx_t =
-            unsafe { zeroed::<*mut ffi::sr_subscription_ctx_t>() };
+        let mut subscr = ptr::null_mut();
         let data = Box::into_raw(Box::new(callback));
         let mod_name = str_to_cstring(mod_name)?;
         let path = str_to_cstring(path)?;
@@ -896,15 +894,14 @@ impl Session {
     where
         F: FnMut(Session, u32, &str, Option<&str>, Event, u32) -> () + 'static,
     {
-        let mut subscr: *mut ffi::sr_subscription_ctx_t =
-            unsafe { zeroed::<*mut ffi::sr_subscription_ctx_t>() };
+        let mut subscr = ptr::null_mut();
         let data = Box::into_raw(Box::new(callback));
         let mod_name = str_to_cstring(mod_name)?;
         let path = match path {
             Some(path) => Some(str_to_cstring(&path)?),
             None => None,
         };
-        let path_ptr = path.map_or(std::ptr::null(), |path| path.as_ptr());
+        let path_ptr = path.map_or(ptr::null(), |path| path.as_ptr());
 
         let rc = unsafe {
             ffi::sr_module_change_subscribe(
@@ -944,7 +941,7 @@ impl Session {
         let callback = &mut *callback_ptr;
 
         let mod_name = CStr::from_ptr(mod_name).to_str().unwrap();
-        let path = if path == std::ptr::null_mut() {
+        let path = if path == ptr::null_mut() {
             None
         } else {
             Some(CStr::from_ptr(path).to_str().unwrap())
@@ -959,7 +956,7 @@ impl Session {
 
     /// Get changes iter.
     pub fn get_changes_iter(&self, path: &str) -> Result<ChangeIter> {
-        let mut it = unsafe { zeroed::<*mut ffi::sr_change_iter_t>() };
+        let mut it = ptr::null_mut();
 
         let path = str_to_cstring(path)?;
         let rc = unsafe { ffi::sr_get_changes_iter(self.sess, path.as_ptr(), &mut it) };
@@ -998,11 +995,11 @@ impl Session {
         let path = str_to_cstring(path)?;
         let (input, input_cnt) = match input {
             Some(mut input) => (input.as_mut_ptr(), input.len() as size_t),
-            None => (std::ptr::null_mut(), 0),
+            None => (ptr::null_mut(), 0),
         };
         let timeout = timeout.map_or(0, |timeout| timeout.as_millis() as u32);
 
-        let mut output: *mut ffi::sr_val_t = unsafe { zeroed::<*mut ffi::sr_val_t>() };
+        let mut output = ptr::null_mut();
         let mut output_count: size_t = 0;
 
         let rc = unsafe {
@@ -1031,8 +1028,8 @@ impl Session {
         iter: &mut ChangeIter,
     ) -> Option<(ChangeOper, Value, Value)> {
         let mut oper: ffi::sr_change_oper_t::Type = 0;
-        let mut old_value: *mut ffi::sr_val_t = std::ptr::null_mut();
-        let mut new_value: *mut ffi::sr_val_t = std::ptr::null_mut();
+        let mut old_value: *mut ffi::sr_val_t = ptr::null_mut();
+        let mut new_value: *mut ffi::sr_val_t = ptr::null_mut();
 
         let rc = unsafe {
             ffi::sr_get_change_next(
@@ -1077,7 +1074,7 @@ pub struct Subscr {
 impl Subscr {
     pub fn new() -> Self {
         Self {
-            subscr: std::ptr::null_mut(),
+            subscr: ptr::null_mut(),
         }
     }
 
