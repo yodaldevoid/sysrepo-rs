@@ -242,7 +242,6 @@ impl TryFrom<u32> for NotifType {
 
 /// Typedefs.
 pub type SessionId = *const ffi::sr_session_ctx_t;
-pub type SubscrId = *const ffi::sr_subscription_ctx_t;
 
 /// Single Sysrepo Value.
 pub struct Value {
@@ -476,9 +475,6 @@ pub struct Session {
 
     /// Owned flag.
     owned: bool,
-
-    /// Map from raw pointer to subscription.
-    subscrs: HashMap<SubscrId, Subscr>,
 }
 
 impl Session {
@@ -487,7 +483,6 @@ impl Session {
         Self {
             sess: ptr::null_mut(),
             owned: true,
-            subscrs: HashMap::new(),
         }
     }
 
@@ -496,7 +491,6 @@ impl Session {
         Self {
             sess: sess,
             owned: owned,
-            subscrs: HashMap::new(),
         }
     }
 
@@ -505,26 +499,12 @@ impl Session {
         Self {
             sess: self.sess,
             owned: false,
-            subscrs: HashMap::new(),
         }
     }
 
     /// Get raw session context.
     pub unsafe fn get_ctx(&self) -> *mut ffi::sr_session_ctx_t {
         self.sess
-    }
-
-    /// Insert subscription.
-    pub fn insert_subscription(&mut self, subscr: Subscr) -> SubscrId {
-        let id = subscr.id();
-        self.subscrs.insert(id, subscr);
-        id
-    }
-
-    /// Remove subscription.
-    pub fn remove_subscription(&mut self, subscr: &Subscr) {
-        let id = subscr.id();
-        self.subscrs.remove(&id);
     }
 
     /// Get tree from given XPath.
@@ -651,15 +631,15 @@ impl Session {
     }
 
     /// Subscribe event notification.
-    pub fn notif_subscribe<F>(
-        &mut self,
+    pub fn notif_subscribe<'a, F>(
+        &'a self,
         mod_name: &str,
         xpath: Option<String>,
         start_time: Option<*mut timespec>,
         stop_time: Option<*mut timespec>,
         callback: F,
         opts: ffi::sr_subscr_options_t,
-    ) -> Result<&mut Subscr>
+    ) -> Result<Subscription<'a>>
     where
         F: FnMut(Session, u32, NotifType, &str, ValueSlice, *mut timespec) + 'static,
     {
@@ -692,8 +672,7 @@ impl Session {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            let id = self.insert_subscription(Subscr::from(subscr));
-            Ok(self.subscrs.get_mut(&id).unwrap())
+            Ok(Subscription::from_raw(self, subscr))
         }
     }
 
@@ -721,13 +700,13 @@ impl Session {
     }
 
     /// Subscribe RPC.
-    pub fn rpc_subscribe<F>(
-        &mut self,
+    pub fn rpc_subscribe<'a, F>(
+        &'a self,
         xpath: Option<String>,
         callback: F,
         priority: u32,
         opts: ffi::sr_subscr_options_t,
-    ) -> Result<&mut Subscr>
+    ) -> Result<Subscription<'a>>
     where
         F: FnMut(Session, u32, &str, ValueSlice, Event, u32) -> ValueSlice + 'static,
     {
@@ -764,8 +743,7 @@ impl Session {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            let id = self.insert_subscription(Subscr::from(subscr));
-            Ok(self.subscrs.get_mut(&id).unwrap())
+            Ok(Subscription::from_raw(self, subscr))
         }
     }
 
@@ -800,13 +778,13 @@ impl Session {
     }
 
     /// Subscribe oper get items.
-    pub fn oper_get_subscribe<F>(
-        &mut self,
+    pub fn oper_get_subscribe<'a, F>(
+        &'a self,
         mod_name: &str,
         path: &str,
         callback: F,
         opts: ffi::sr_subscr_options_t,
-    ) -> Result<&mut Subscr>
+    ) -> Result<Subscription<'a>>
     where
         F: FnMut(&mut DataTree<'_>, u32, &str, &str, Option<&str>, u32) + 'static,
     {
@@ -831,8 +809,7 @@ impl Session {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            let id = self.insert_subscription(Subscr::from(subscr));
-            Ok(self.subscrs.get_mut(&id).unwrap())
+            Ok(Subscription::from_raw(self, subscr))
         }
     }
 
@@ -883,14 +860,14 @@ impl Session {
     }
 
     /// Subscribe module change.
-    pub fn module_change_subscribe<F>(
-        &mut self,
+    pub fn module_change_subscribe<'a, F>(
+        &'a self,
         mod_name: &str,
         path: Option<&str>,
         callback: F,
         priority: u32,
         opts: ffi::sr_subscr_options_t,
-    ) -> Result<&mut Subscr>
+    ) -> Result<Subscription<'a>>
     where
         F: FnMut(Session, u32, &str, Option<&str>, Event, u32) -> () + 'static,
     {
@@ -920,8 +897,7 @@ impl Session {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            let id = self.insert_subscription(Subscr::from(subscr));
-            Ok(self.subscrs.get_mut(&id).unwrap())
+            Ok(Subscription::from_raw(self, subscr))
         }
     }
 
@@ -1056,8 +1032,6 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         if self.owned {
-            self.subscrs.drain();
-
             unsafe {
                 ffi::sr_session_stop(self.sess);
             }
@@ -1065,35 +1039,36 @@ impl Drop for Session {
     }
 }
 
-/// Sysrepo Subscription.
-pub struct Subscr {
-    /// Raw Pointer to subscription.
+pub struct Subscription<'a> {
     subscr: *mut ffi::sr_subscription_ctx_t,
+    _sess: &'a Session,
 }
 
-impl Subscr {
-    pub fn new() -> Self {
+impl<'a> Subscription<'a> {
+    pub fn from_raw(sess: &'a Session, subscr: *mut ffi::sr_subscription_ctx_t) -> Self {
         Self {
-            subscr: ptr::null_mut(),
+            _sess: sess,
+            subscr,
         }
-    }
-
-    pub fn from(subscr: *mut ffi::sr_subscription_ctx_t) -> Self {
-        Self { subscr: subscr }
-    }
-
-    pub fn id(&self) -> SubscrId {
-        self.subscr
     }
 }
 
-impl Drop for Subscr {
+impl Drop for Subscription<'_> {
     fn drop(&mut self) {
-        unsafe {
-            ffi::sr_unsubscribe(self.subscr);
+        // The sysrepo documentation states that this should be retried until
+        // success.
+        loop {
+            let rc = unsafe { ffi::sr_unsubscribe(self.subscr) };
+            let rc = rc as ffi::sr_error_t::Type;
+            if rc == ffi::sr_error_t::SR_ERR_OK {
+                break;
+            }
         }
     }
 }
+
+unsafe impl Send for Subscription<'_> {}
+unsafe impl Sync for Subscription<'_> {}
 
 /// Sysrepo Changes Iterator.
 pub struct ChangeIter {
