@@ -39,13 +39,13 @@ fn run() -> bool {
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let mut sr = match Conn::new(0) {
+    let sr = match Connection::new(Default::default()) {
         Ok(sr) => sr,
         Err(_) => return false,
     };
 
     // Start session.
-    let sess = match sr.start_session(Datastore::Running) {
+    let mut sess = match sr.start_session(Datastore::Running) {
         Ok(sess) => sess,
         Err(_) => return false,
     };

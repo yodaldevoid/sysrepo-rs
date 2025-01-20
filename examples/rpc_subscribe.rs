@@ -11,6 +11,7 @@ use std::thread;
 use std::time;
 
 use sysrepo::*;
+use yang::data::DataTree;
 
 use utils::*;
 
@@ -45,7 +46,7 @@ fn run() -> bool {
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let mut sr = match Conn::new(0) {
+    let sr = match Connection::new(Default::default()) {
         Ok(sr) => sr,
         Err(_) => return false,
     };
@@ -57,22 +58,36 @@ fn run() -> bool {
     };
 
     // Callback function.
-    let f = |_sess: Session,
+    let f = |_sess: &Session,
              _sub_id: u32,
-             _op_path: &str,
-             _inputs: ValueSlice,
+             path: &str,
+             input: &DataTree,
              _event: Event,
-             _request_id: u32|
-     -> ValueSlice {
-        let mut sr_output = ValueSlice::new(1, false);
-        sr_output
-            .set_int64_value(0, false, "/examples:oper/ret", -123456)
-            .unwrap();
-        sr_output
+             _request_id: u32,
+             output: &mut DataTree|
+     -> Result<()> {
+        println!(
+            "\n\n ========== RPC \"{}\" RECEIVED: =======================\n",
+            path
+        );
+        if let Some(input_node) = input.reference() {
+            for node in input_node.traverse() {
+                print_node(node);
+            }
+        }
+
+        if path == "/examples:oper" {
+            // TODO: map libyang error into sysrepo error
+            output
+                .new_path("/examples:oper/ret", Some("-123456"), true)
+                .unwrap();
+        }
+
+        Ok(())
     };
 
     // Subscribe for the RPC.
-    if let Err(_) = sess.rpc_subscribe(Some(path), f, 0, 0) {
+    if let Err(_) = sess.rpc_subscribe(&path, f, 0, 0) {
         return false;
     }
 

@@ -23,6 +23,7 @@ sysrepo-sys = { version = "0.1.0", path = "./sysrepo-sys" }
 libc = "0.2.121"
 yang2 = { version = "0.18", optional = true }
 yang3 = { version = "0.13", optional = true }
+bitflags = "2.6.0"
 
 [dev-dependencies]
 nix = "0.17.0"

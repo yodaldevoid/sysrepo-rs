@@ -52,7 +52,7 @@ fn print_change(oper: ChangeOper, old_val: Value, new_val: Value) {
 }
 
 /// Print current config.
-fn print_current_config(sess: &mut Session, mod_name: &str) {
+fn print_current_config(sess: &Session, mod_name: &str) {
     let xpath = format!("/{}:*//.", mod_name);
     let xpath = &xpath[..];
 
@@ -100,13 +100,13 @@ fn run() -> bool {
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let mut sr = match Conn::new(0) {
+    let sr = match Connection::new(Default::default()) {
         Ok(sr) => sr,
         Err(_) => return false,
     };
 
     // Start session.
-    let mut sess = match sr.start_session(Datastore::Running) {
+    let sess = match sr.start_session(Datastore::Running) {
         Ok(sess) => sess,
         Err(_) => return false,
     };
@@ -115,21 +115,18 @@ fn run() -> bool {
     println!("");
     println!(" ========== READING RUNNING CONFIG: ==========");
     println!("");
-    print_current_config(&mut sess, &mod_name);
+    print_current_config(&sess, &mod_name);
 
-    let f = |sess: Session,
+    let f = |sess: &Session,
              sub_id: u32,
              mod_name: &str,
              _path: Option<&str>,
              event: Event,
              _request_id: u32|
-     -> () {
+     -> Result<()> {
         let mut sess = sess;
         let path = "//.";
-        let mut iter = match sess.get_changes_iter(&path) {
-            Ok(iter) => iter,
-            Err(_) => return,
-        };
+        let mut iter = sess.get_changes_iter(&path)?;
 
         println!("");
         println!("");
@@ -153,6 +150,8 @@ fn run() -> bool {
             println!("");
             print_current_config(&mut sess, mod_name);
         }
+
+        Ok(())
     };
 
     // Subscribe for changes in running config.

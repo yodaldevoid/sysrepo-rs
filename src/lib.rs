@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -8,14 +7,15 @@ use std::ops::Deref;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 use std::slice;
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[cfg(feature = "yang2")]
 pub use yang2 as yang;
 #[cfg(feature = "yang3")]
 pub use yang3 as yang;
 
+use bitflags::bitflags;
 use libc::{self, size_t};
 pub use sysrepo_sys as ffi;
 use yang::context::Context;
@@ -49,14 +49,21 @@ pub enum LogLevel {
     Debug = ffi::sr_log_level_t::SR_LL_DBG as isize,
 }
 
-/// Conn Flag.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum ConnFlag {
-    Default = ffi::sr_conn_flag_t::SR_CONN_DEFAULT as isize,
-    CacheRunning = ffi::sr_conn_flag_t::SR_CONN_CACHE_RUNNING as isize,
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+    pub struct ConnectionFlags: ffi::sr_conn_flag_t::Type {
+        const CACHE_RUNNING = ffi::sr_conn_flag_t::SR_CONN_CACHE_RUNNING;
+        const SET_PRIV_PARSED = ffi::sr_conn_flag_t::SR_CONN_CTX_SET_PRIV_PARSED;
+    }
 }
 
-/// Datastore.
+impl Default for ConnectionFlags {
+    fn default() -> Self {
+        ConnectionFlags::empty()
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Datastore {
     Startup = ffi::sr_datastore_t::SR_DS_STARTUP as isize,
@@ -135,7 +142,6 @@ pub enum SubcribeFlag {
     OperMerge = ffi::sr_subscr_flag_t::SR_SUBSCR_OPER_MERGE as isize,
 }
 
-/// Event.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Event {
     Update = ffi::sr_event_t::SR_EV_UPDATE as isize,
@@ -211,9 +217,8 @@ impl fmt::Display for ChangeOper {
     }
 }
 
-/// Notification Type.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum NotifType {
+pub enum NotificationType {
     Realtime = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REALTIME as isize,
     Replay = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY as isize,
     ReplayComplete = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY_COMPLETE as isize,
@@ -223,25 +228,24 @@ pub enum NotifType {
     Resumed = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED as isize,
 }
 
-impl TryFrom<u32> for NotifType {
+impl TryFrom<ffi::sr_ev_notif_type_t::Type> for NotificationType {
     type Error = &'static str;
 
-    fn try_from(t: u32) -> std::result::Result<Self, Self::Error> {
+    fn try_from(t: ffi::sr_ev_notif_type_t::Type) -> std::result::Result<Self, Self::Error> {
         match t {
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REALTIME => Ok(NotifType::Realtime),
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY => Ok(NotifType::Replay),
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY_COMPLETE => Ok(NotifType::ReplayComplete),
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_TERMINATED => Ok(NotifType::Terminated),
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_MODIFIED => Ok(NotifType::Modified),
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED => Ok(NotifType::Suspended),
-            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED => Ok(NotifType::Resumed),
-            _ => Err("Invalid NotifType"),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REALTIME => Ok(NotificationType::Realtime),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY => Ok(NotificationType::Replay),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REPLAY_COMPLETE => {
+                Ok(NotificationType::ReplayComplete)
+            }
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_TERMINATED => Ok(NotificationType::Terminated),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_MODIFIED => Ok(NotificationType::Modified),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED => Ok(NotificationType::Suspended),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED => Ok(NotificationType::Resumed),
+            _ => Err("Invalid NotificationType"),
         }
     }
 }
-
-/// Typedefs.
-pub type SessionId = *const ffi::sr_session_ctx_t;
 
 /// Single Sysrepo Value.
 pub struct Value {
@@ -363,67 +367,49 @@ pub fn log_syslog(app_name: &str, log_level: LogLevel) -> Result<()> {
     Ok(())
 }
 
-/// Sysrepo connection.
-pub struct Conn {
-    /// Raw Pointer to Connection.
+/// Do not use *nix's fork(2) after creating a connection.
+pub struct Connection {
     conn: *mut ffi::sr_conn_ctx_t,
-
-    /// Sessions.
-    sessions: HashMap<SessionId, Session>,
 }
 
-impl Conn {
-    /// Constructor.
-    pub fn new(opts: ffi::sr_conn_options_t) -> Result<Conn> {
+impl Connection {
+    pub fn new(flags: ConnectionFlags) -> Result<Self> {
         let mut conn = ptr::null_mut();
-
-        let rc = unsafe { ffi::sr_connect(opts, &mut conn) };
+        let rc = unsafe { ffi::sr_connect(flags.bits(), &mut conn) };
 
         let rc = rc as ffi::sr_error_t::Type;
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            Ok(Conn {
-                conn: conn,
-                sessions: HashMap::new(),
-            })
+            debug_assert!(!conn.is_null());
+            Ok(Self { conn })
         }
     }
 
-    /// Disconnect.
-    pub fn disconnect(&mut self) {
-        unsafe {
-            ffi::sr_disconnect(self.conn);
-        }
-        self.conn = ptr::null_mut();
+    /// Produce a `Connection` from a raw pointer received from the sysrepo C
+    /// API.
+    ///
+    /// The pointer must not be NULL. Any acquired contexts from this connection
+    /// must be released before calling this.
+    pub unsafe fn from_raw(conn: *mut ffi::sr_conn_ctx_t) -> Self {
+        debug_assert!(!conn.is_null());
+        Self { conn }
     }
 
-    /// Add session to map.
-    pub fn insert_session(&mut self, id: SessionId, sess: Session) {
-        self.sessions.insert(id, sess);
+    pub fn into_raw(self) -> *mut ffi::sr_conn_ctx_t {
+        self.conn
     }
 
-    /// Add session to map.
-    pub fn remove_session(&mut self, id: &SessionId) {
-        self.sessions.remove(id);
-    }
-
-    /// Lookup session from map.
-    pub fn lookup_session(&mut self, id: &SessionId) -> Option<&mut Session> {
-        self.sessions.get_mut(id)
-    }
-
-    /// Start session.
-    pub fn start_session(&mut self, ds: Datastore) -> Result<&mut Session> {
+    pub fn start_session(&self, ds: Datastore) -> Result<Session<'_>> {
         let mut sess = ptr::null_mut();
         let rc = unsafe { ffi::sr_session_start(self.conn, ds as u32, &mut sess) };
+
         let rc = rc as ffi::sr_error_t::Type;
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            let id = sess;
-            self.insert_session(id, Session::from(sess, true));
-            Ok(self.sessions.get_mut(&(id as SessionId)).unwrap())
+            debug_assert!(!sess.is_null());
+            Ok(unsafe { Session::from_raw(self, sess) })
         }
     }
 
@@ -439,16 +425,26 @@ impl Conn {
     }
 }
 
-impl Drop for Conn {
+impl Drop for Connection {
     fn drop(&mut self) {
-        self.sessions.drain();
-        self.disconnect();
+        // The sysrepo documentation states that this should be retried until
+        // success.
+        loop {
+            let rc = unsafe { ffi::sr_disconnect(self.conn) };
+            let rc = rc as ffi::sr_error_t::Type;
+            if rc == ffi::sr_error_t::SR_ERR_OK {
+                break;
+            }
+        }
     }
 }
 
+unsafe impl Send for Connection {}
+unsafe impl Sync for Connection {}
+
 /// A wrapper around `Context` to ensure it is released back to sysrepo on drop.
 pub struct AcquiredContext<'a> {
-    conn: &'a Conn,
+    conn: &'a Connection,
     ctx: ManuallyDrop<Context>,
 }
 
@@ -468,43 +464,22 @@ impl Drop for AcquiredContext<'_> {
     }
 }
 
-/// Sysrepo session.
-pub struct Session {
-    /// Raw Pointer to session.
+pub struct Session<'a> {
+    conn: &'a Connection,
     sess: *mut ffi::sr_session_ctx_t,
-
-    /// Owned flag.
-    owned: bool,
 }
 
-impl Session {
-    /// Constructor.
-    pub fn new() -> Self {
-        Self {
-            sess: ptr::null_mut(),
-            owned: true,
-        }
+impl<'b> Session<'b> {
+    pub unsafe fn from_raw(conn: &'b Connection, sess: *mut ffi::sr_session_ctx_t) -> Self {
+        Self { conn, sess }
     }
 
-    /// Constructor.
-    pub fn from(sess: *mut ffi::sr_session_ctx_t, owned: bool) -> Self {
-        Self {
-            sess: sess,
-            owned: owned,
-        }
-    }
-
-    /// Create unowned clone.
-    pub fn clone(&self) -> Self {
-        Self {
-            sess: self.sess,
-            owned: false,
-        }
-    }
-
-    /// Get raw session context.
-    pub unsafe fn get_ctx(&self) -> *mut ffi::sr_session_ctx_t {
+    pub fn into_raw(self) -> *mut ffi::sr_session_ctx_t {
         self.sess
+    }
+
+    pub fn get_context(&self) -> Option<AcquiredContext<'b>> {
+        self.conn.get_context()
     }
 
     /// Get tree from given XPath.
@@ -562,7 +537,7 @@ impl Session {
 
     /// Get items from given Xpath, anre return result in Value slice.
     pub fn get_items(
-        &mut self,
+        &self,
         xpath: &str,
         timeout: Option<Duration>,
         opts: u32,
@@ -630,32 +605,31 @@ impl Session {
         }
     }
 
-    /// Subscribe event notification.
     pub fn notif_subscribe<'a, F>(
         &'a self,
         mod_name: &str,
-        xpath: Option<String>,
+        xpath: Option<&str>,
         start_time: Option<*mut timespec>,
         stop_time: Option<*mut timespec>,
         callback: F,
         opts: ffi::sr_subscr_options_t,
     ) -> Result<Subscription<'a>>
     where
-        F: FnMut(Session, u32, NotifType, &str, ValueSlice, *mut timespec) + 'static,
+        F: FnMut(&Session, u32, NotificationType, &DataTree, *mut timespec) + 'static,
     {
         let mod_name = str_to_cstring(mod_name)?;
         let xpath = match xpath {
-            Some(path) => Some(str_to_cstring(&path)?),
+            Some(path) => Some(str_to_cstring(path)?),
             None => None,
         };
         let xpath_ptr = xpath.map_or(ptr::null(), |xpath| xpath.as_ptr());
-        let start_time = start_time.unwrap_or(ptr::null_mut());
-        let stop_time = stop_time.unwrap_or(ptr::null_mut());
+        let start_time = start_time.unwrap_or(std::ptr::null_mut());
+        let stop_time = stop_time.unwrap_or(std::ptr::null_mut());
 
         let mut subscr = ptr::null_mut();
         let data = Box::into_raw(Box::new(callback));
         let rc = unsafe {
-            ffi::sr_notif_subscribe(
+            ffi::sr_notif_subscribe_tree(
                 self.sess,
                 mod_name.as_ptr(),
                 xpath_ptr,
@@ -680,63 +654,55 @@ impl Session {
         sess: *mut ffi::sr_session_ctx_t,
         sub_id: u32,
         notif_type: ffi::sr_ev_notif_type_t::Type,
-        path: *const c_char,
-        values: *const ffi::sr_val_t,
-        values_cnt: size_t,
+        notif: *const yang::ffi::lyd_node,
         timestamp: *mut timespec,
         private_data: *mut c_void,
     ) where
-        F: FnMut(Session, u32, NotifType, &str, ValueSlice, *mut timespec),
+        // TODO: probably should pass DataNodeRef instead of DataTree
+        F: FnMut(&Session, u32, NotificationType, &DataTree, *mut timespec),
     {
         let callback_ptr = private_data as *mut F;
         let callback = &mut *callback_ptr;
 
-        let path = CStr::from_ptr(path).to_str().unwrap();
-        let sr_values = ValueSlice::from(values as *mut ffi::sr_val_t, values_cnt, false);
-        let sess = Session::from(sess, false);
-        let notif_type = NotifType::try_from(notif_type).expect("Convert error");
+        let conn = ffi::sr_session_get_connection(sess);
+        let ctx = ffi::sr_acquire_context(conn);
+        // ctx will never be NULL as the context is locked for reading before
+        // this callback is called.
+        let ctx = ManuallyDrop::new(Context::from_raw(&(), ctx as *mut _));
+        let conn = ManuallyDrop::new(Connection::from_raw(conn));
+        let sess = ManuallyDrop::new(Session::from_raw(&conn, sess));
+        let notif = ManuallyDrop::new(DataTree::from_raw(&ctx, notif as *mut _));
+        let notif_type = NotificationType::try_from(notif_type).expect("Convert error");
 
-        callback(sess, sub_id, notif_type, path, sr_values, timestamp);
+        callback(&sess, sub_id, notif_type, &notif, timestamp);
+
+        ffi::sr_release_context(conn.conn);
     }
 
-    /// Subscribe RPC.
     pub fn rpc_subscribe<'a, F>(
         &'a self,
-        xpath: Option<String>,
+        xpath: &str,
         callback: F,
         priority: u32,
         opts: ffi::sr_subscr_options_t,
     ) -> Result<Subscription<'a>>
     where
-        F: FnMut(Session, u32, &str, ValueSlice, Event, u32) -> ValueSlice + 'static,
+        F: FnMut(&Session, u32, &str, &DataTree, Event, u32, &mut DataTree) -> Result<()> + 'static,
     {
-        let mut subscr = ptr::null_mut();
+        let mut subscr: *mut ffi::sr_subscription_ctx_t = ptr::null_mut();
         let data = Box::into_raw(Box::new(callback));
+        let xpath = str_to_cstring(&xpath)?;
 
         let rc = unsafe {
-            match xpath {
-                Some(xpath) => {
-                    let xpath = str_to_cstring(&xpath)?;
-                    ffi::sr_rpc_subscribe(
-                        self.sess,
-                        xpath.as_ptr(),
-                        Some(Session::call_rpc::<F>),
-                        data as *mut _,
-                        priority,
-                        opts,
-                        &mut subscr,
-                    )
-                }
-                None => ffi::sr_rpc_subscribe(
-                    self.sess,
-                    ptr::null_mut(),
-                    Some(Session::call_rpc::<F>),
-                    data as *mut _,
-                    priority,
-                    opts,
-                    &mut subscr,
-                ),
-            }
+            ffi::sr_rpc_subscribe_tree(
+                self.sess,
+                xpath.as_ptr(),
+                Some(Session::call_rpc::<F>),
+                data as *mut _,
+                priority,
+                opts,
+                &mut subscr,
+            )
         };
 
         let rc = rc as ffi::sr_error_t::Type;
@@ -751,30 +717,45 @@ impl Session {
         sess: *mut ffi::sr_session_ctx_t,
         sub_id: u32,
         op_path: *const c_char,
-        input: *const ffi::sr_val_t,
-        input_cnt: size_t,
+        input: *const yang::ffi::lyd_node,
         event: ffi::sr_event_t::Type,
         request_id: u32,
-        output: *mut *mut ffi::sr_val_t,
-        output_cnt: *mut size_t,
+        output: *mut yang::ffi::lyd_node,
         private_data: *mut c_void,
     ) -> c_int
     where
-        F: FnMut(Session, u32, &str, ValueSlice, Event, u32) -> ValueSlice,
+        F: FnMut(&Session, u32, &str, &DataTree, Event, u32, &mut DataTree) -> Result<()>,
     {
         let callback_ptr = private_data as *mut F;
         let callback = &mut *callback_ptr;
 
         let op_path = CStr::from_ptr(op_path).to_str().unwrap();
-        let inputs = ValueSlice::from(input as *mut ffi::sr_val_t, input_cnt, false);
-        let sess = Session::from(sess, false);
+        let conn = ffi::sr_session_get_connection(sess);
+        let ctx = ffi::sr_acquire_context(conn);
+        // ctx will never be NULL as the context is locked for reading before
+        // this callback is called.
+        let ctx = ManuallyDrop::new(Context::from_raw(&(), ctx as *mut _));
+        let conn = ManuallyDrop::new(Connection::from_raw(conn));
+        let sess = ManuallyDrop::new(Session::from_raw(&conn, sess));
+        let input = ManuallyDrop::new(DataTree::from_raw(&ctx, input as *mut _));
+        let mut output = ManuallyDrop::new(DataTree::from_raw(&ctx, output as *mut _));
         let event = Event::try_from(event).expect("Convert error");
 
-        let sr_output = callback(sess, sub_id, op_path, inputs, event, request_id);
-        *output = sr_output.as_ptr();
-        *output_cnt = sr_output.len();
+        let res = callback(
+            &sess,
+            sub_id,
+            op_path,
+            &input,
+            event,
+            request_id,
+            &mut output,
+        );
 
-        ffi::sr_error_t::SR_ERR_OK as c_int
+        ffi::sr_release_context(conn.conn);
+
+        res.err()
+            .map(|e| e.errcode)
+            .unwrap_or(ffi::sr_error_t::SR_ERR_OK) as c_int
     }
 
     /// Subscribe oper get items.
@@ -859,32 +840,27 @@ impl Session {
         ffi::sr_error_t::SR_ERR_OK as c_int
     }
 
-    /// Subscribe module change.
     pub fn module_change_subscribe<'a, F>(
         &'a self,
         mod_name: &str,
-        path: Option<&str>,
+        xpath: Option<&str>,
         callback: F,
         priority: u32,
         opts: ffi::sr_subscr_options_t,
     ) -> Result<Subscription<'a>>
     where
-        F: FnMut(Session, u32, &str, Option<&str>, Event, u32) -> () + 'static,
+        F: FnMut(&Session, u32, &str, Option<&str>, Event, u32) -> Result<()> + 'static,
     {
-        let mut subscr = ptr::null_mut();
+        let mut subscr: *mut ffi::sr_subscription_ctx_t = ptr::null_mut();
         let data = Box::into_raw(Box::new(callback));
         let mod_name = str_to_cstring(mod_name)?;
-        let path = match path {
-            Some(path) => Some(str_to_cstring(&path)?),
-            None => None,
-        };
-        let path_ptr = path.map_or(ptr::null(), |path| path.as_ptr());
+        let xpath = xpath.map(|p| str_to_cstring(&p)).transpose()?;
 
         let rc = unsafe {
             ffi::sr_module_change_subscribe(
                 self.sess,
                 mod_name.as_ptr(),
-                path_ptr,
+                xpath.map_or(ptr::null(), |p| p.as_ptr()),
                 Some(Session::call_module_change::<F>),
                 data as *mut _,
                 priority,
@@ -911,23 +887,29 @@ impl Session {
         private_data: *mut c_void,
     ) -> c_int
     where
-        F: FnMut(Session, u32, &str, Option<&str>, Event, u32) -> (),
+        F: FnMut(&Session, u32, &str, Option<&str>, Event, u32) -> Result<()>,
     {
         let callback_ptr = private_data as *mut F;
         let callback = &mut *callback_ptr;
 
         let mod_name = CStr::from_ptr(mod_name).to_str().unwrap();
-        let path = if path == ptr::null_mut() {
+        let path = if path.is_null() {
             None
         } else {
             Some(CStr::from_ptr(path).to_str().unwrap())
         };
         let event = Event::try_from(event).expect("Convert error");
-        let sess = Session::from(sess, false);
+        let conn = ffi::sr_session_get_connection(sess);
+        let conn = ManuallyDrop::new(Connection::from_raw(conn));
+        let sess = ManuallyDrop::new(Session::from_raw(&conn, sess));
 
-        callback(sess, sub_id, mod_name, path, event, request_id);
+        let res = callback(&sess, sub_id, mod_name, path, event, request_id);
 
-        ffi::sr_error_t::SR_ERR_OK as c_int
+        ffi::sr_release_context(conn.conn);
+
+        res.err()
+            .map(|e| e.errcode)
+            .unwrap_or(ffi::sr_error_t::SR_ERR_OK) as c_int
     }
 
     /// Get changes iter.
@@ -999,10 +981,7 @@ impl Session {
     }
 
     /// Return oper, old_value, new_value with next iter.
-    pub fn get_change_next(
-        &mut self,
-        iter: &mut ChangeIter,
-    ) -> Option<(ChangeOper, Value, Value)> {
+    pub fn get_change_next(&self, iter: &mut ChangeIter) -> Option<(ChangeOper, Value, Value)> {
         let mut oper: ffi::sr_change_oper_t::Type = 0;
         let mut old_value: *mut ffi::sr_val_t = ptr::null_mut();
         let mut new_value: *mut ffi::sr_val_t = ptr::null_mut();
@@ -1029,23 +1008,29 @@ impl Session {
     }
 }
 
-impl Drop for Session {
+impl Drop for Session<'_> {
     fn drop(&mut self) {
-        if self.owned {
-            unsafe {
-                ffi::sr_session_stop(self.sess);
+        // The sysrepo documentation states that this should be retried until
+        // success.
+        loop {
+            let rc = unsafe { ffi::sr_session_stop(self.sess) };
+            let rc = rc as ffi::sr_error_t::Type;
+            if rc == ffi::sr_error_t::SR_ERR_OK {
+                break;
             }
         }
     }
 }
 
+unsafe impl Send for Session<'_> {}
+
 pub struct Subscription<'a> {
     subscr: *mut ffi::sr_subscription_ctx_t,
-    _sess: &'a Session,
+    _sess: &'a Session<'a>,
 }
 
 impl<'a> Subscription<'a> {
-    pub fn from_raw(sess: &'a Session, subscr: *mut ffi::sr_subscription_ctx_t) -> Self {
+    pub fn from_raw(sess: &'a Session<'a>, subscr: *mut ffi::sr_subscription_ctx_t) -> Self {
         Self {
             _sess: sess,
             subscr,

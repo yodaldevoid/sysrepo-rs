@@ -11,6 +11,7 @@ use std::thread;
 use std::time;
 
 use sysrepo::*;
+use yang::data::DataTree;
 use yang::ffi::timespec;
 
 use utils::*;
@@ -57,7 +58,7 @@ fn run() -> bool {
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let mut sr = match Conn::new(0) {
+    let sr = match Connection::new(Default::default()) {
         Ok(sr) => sr,
         Err(_) => return false,
     };
@@ -69,27 +70,28 @@ fn run() -> bool {
     };
 
     // Callback function.
-    let f = |_sess: Session,
+    let f = |_sess: &Session,
              sub_id: u32,
-             _notif_type: NotifType,
-             path: &str,
-             mut values: ValueSlice,
+             _notif_type: NotificationType,
+             tree: &DataTree,
              _timestamp: *mut timespec| {
+        let node = tree.reference().unwrap();
         println!("");
         println!("");
         println!(
             r#" ========== NOTIFICATION ({}) "{}" RECEIVED ======================="#,
-            sub_id, path
+            sub_id,
+            node.path(),
         );
         println!("");
 
-        for v in values.as_slice() {
-            print_val(&v);
+        for node in node.traverse() {
+            print_node(node);
         }
     };
 
     // Subscribe for the notifications.
-    if let Err(_) = sess.notif_subscribe(&mod_name, xpath, None, None, f, 0) {
+    if let Err(_) = sess.notif_subscribe(&mod_name, xpath.as_deref(), None, None, f, 0) {
         return false;
     }
 
