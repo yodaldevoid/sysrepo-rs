@@ -80,7 +80,7 @@ fn run() -> bool {
     }
 
     // Send the notification.
-    if let Err(_) = sess.notif_send_tree(&notif, 0, false) {
+    if let Err(_) = sess.notif_send(&notif, None) {
         return false;
     }
 

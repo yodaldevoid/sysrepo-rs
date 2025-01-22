@@ -887,12 +887,19 @@ impl<'b> Session<'b> {
     }
 
     /// Send event notify tree.
-    pub fn notif_send_tree(&mut self, notif: &DataTree, timeout_ms: u32, wait: bool) -> Result<()> {
+    pub fn notif_send(&mut self, notif: &DataTree, timeout: Option<Duration>) -> Result<()> {
+        let timeout_ms = timeout.map_or(0, |t| t.as_millis() as u32);
         let node = notif.reference().ok_or(Error {
             errcode: ffi::sr_error_t::SR_ERR_INVAL_ARG,
         })?;
-        let rc =
-            unsafe { ffi::sr_notif_send_tree(self.sess, node.as_raw(), timeout_ms, wait as c_int) };
+        let rc = unsafe {
+            ffi::sr_notif_send_tree(
+                self.sess,
+                node.as_raw(),
+                timeout_ms,
+                timeout.is_some() as c_int,
+            )
+        };
 
         let rc = rc as ffi::sr_error_t::Type;
         if rc != ffi::sr_error_t::SR_ERR_OK {
