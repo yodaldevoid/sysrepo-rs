@@ -93,7 +93,7 @@ fn run() -> bool {
     };
 
     // Subscribe for the providing the operational data.
-    if let Err(_) = sess.oper_get_subscribe(&mod_name, &path, f, 0) {
+    if let Err(_) = sess.oper_get_subscribe(&mod_name, &path, f, Default::default()) {
         return false;
     }
 

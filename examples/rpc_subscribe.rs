@@ -87,7 +87,7 @@ fn run() -> bool {
     };
 
     // Subscribe for the RPC.
-    if let Err(_) = sess.rpc_subscribe(&path, f, 0, 0) {
+    if let Err(_) = sess.rpc_subscribe(&path, f, 0, Default::default()) {
         return false;
     }
 

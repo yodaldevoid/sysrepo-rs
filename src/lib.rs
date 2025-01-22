@@ -115,16 +115,23 @@ pub enum MovePosition {
     Last = ffi::sr_move_position_t::SR_MOVE_LAST as isize,
 }
 
-/// Subscribe Flag.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SubcribeFlag {
-    Default = ffi::sr_subscr_flag_t::SR_SUBSCR_DEFAULT as isize,
-    NoThread = ffi::sr_subscr_flag_t::SR_SUBSCR_NO_THREAD as isize,
-    Passive = ffi::sr_subscr_flag_t::SR_SUBSCR_PASSIVE as isize,
-    DoneOnly = ffi::sr_subscr_flag_t::SR_SUBSCR_DONE_ONLY as isize,
-    Enabled = ffi::sr_subscr_flag_t::SR_SUBSCR_ENABLED as isize,
-    Update = ffi::sr_subscr_flag_t::SR_SUBSCR_UPDATE as isize,
-    OperMerge = ffi::sr_subscr_flag_t::SR_SUBSCR_OPER_MERGE as isize,
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+    pub struct SubscriptionOptions: ffi::sr_subscr_flag_t::Type {
+        const NO_THREAD = ffi::sr_subscr_flag_t::SR_SUBSCR_NO_THREAD;
+        const PASSIVE = ffi::sr_subscr_flag_t::SR_SUBSCR_PASSIVE;
+        const DONE_ONLY = ffi::sr_subscr_flag_t::SR_SUBSCR_DONE_ONLY;
+        const ENABLED = ffi::sr_subscr_flag_t::SR_SUBSCR_ENABLED;
+        const UPDATE = ffi::sr_subscr_flag_t::SR_SUBSCR_UPDATE;
+        const OPER_MERGE = ffi::sr_subscr_flag_t::SR_SUBSCR_OPER_MERGE;
+    }
+}
+
+impl Default for SubscriptionOptions {
+    fn default() -> Self {
+        SubscriptionOptions::empty()
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -424,7 +431,7 @@ impl<'b> Session<'b> {
         start_time: Option<*mut timespec>,
         stop_time: Option<*mut timespec>,
         callback: F,
-        opts: ffi::sr_subscr_options_t,
+        options: SubscriptionOptions,
     ) -> Result<Subscription<'a>>
     where
         F: FnMut(&Session, u32, NotificationType, &DataTree, *mut timespec) + 'static,
@@ -449,7 +456,7 @@ impl<'b> Session<'b> {
                 stop_time,
                 Some(Session::call_event_notif::<F>),
                 data as *mut _,
-                opts,
+                options.bits(),
                 &mut subscr,
             )
         };
@@ -496,7 +503,7 @@ impl<'b> Session<'b> {
         xpath: &str,
         callback: F,
         priority: u32,
-        opts: ffi::sr_subscr_options_t,
+        options: SubscriptionOptions,
     ) -> Result<Subscription<'a>>
     where
         F: FnMut(&Session, u32, &str, &DataTree, Event, u32, &mut DataTree) -> Result<()> + 'static,
@@ -512,7 +519,7 @@ impl<'b> Session<'b> {
                 Some(Session::call_rpc::<F>),
                 data as *mut _,
                 priority,
-                opts,
+                options.bits(),
                 &mut subscr,
             )
         };
@@ -576,7 +583,7 @@ impl<'b> Session<'b> {
         mod_name: &str,
         path: &str,
         callback: F,
-        opts: ffi::sr_subscr_options_t,
+        options: SubscriptionOptions,
     ) -> Result<Subscription<'a>>
     where
         F: FnMut(&Session, u32, &str, &str, Option<&str>, u32, &mut DataTree) -> Result<()>
@@ -594,7 +601,7 @@ impl<'b> Session<'b> {
                 path.as_ptr(),
                 Some(Session::call_get_items::<F>),
                 data as *mut _,
-                opts,
+                options.bits(),
                 &mut subscr,
             )
         };
@@ -668,7 +675,7 @@ impl<'b> Session<'b> {
         xpath: Option<&str>,
         callback: F,
         priority: u32,
-        opts: ffi::sr_subscr_options_t,
+        options: SubscriptionOptions,
     ) -> Result<Subscription<'a>>
     where
         F: FnMut(&Session, u32, &str, Option<&str>, Event, u32) -> Result<()> + 'static,
@@ -686,7 +693,7 @@ impl<'b> Session<'b> {
                 Some(Session::call_module_change::<F>),
                 data as *mut _,
                 priority,
-                opts,
+                options.bits(),
                 &mut subscr,
             )
         };

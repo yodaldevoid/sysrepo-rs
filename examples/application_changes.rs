@@ -171,12 +171,12 @@ fn run() -> bool {
     // Subscribe for changes in running config.
     if args.len() == 3 {
         let xpath = args[2].clone();
-        match sess.module_change_subscribe(&mod_name, Some(&xpath[..]), f, 0, 0) {
+        match sess.module_change_subscribe(&mod_name, Some(&xpath[..]), f, 0, Default::default()) {
             Err(_) => return false,
             Ok(subscr) => subscr,
         }
     } else {
-        match sess.module_change_subscribe(&mod_name, None, f, 0, 0) {
+        match sess.module_change_subscribe(&mod_name, None, f, 0, Default::default()) {
             Err(_) => return false,
             Ok(subscr) => subscr,
         }
