@@ -3,12 +3,11 @@ use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem::{self, ManuallyDrop};
+use std::mem::ManuallyDrop;
 use std::num::NonZero;
 use std::ops::Deref;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
-use std::slice;
 use std::time::Duration;
 
 #[cfg(feature = "yang2")]
@@ -17,7 +16,6 @@ pub use yang2 as yang;
 pub use yang3 as yang;
 
 use bitflags::bitflags;
-use libc::{self, size_t};
 pub use sysrepo_sys as ffi;
 use yang::context::Context;
 use yang::data::DataTree;
@@ -71,35 +69,6 @@ pub enum Datastore {
     Running = ffi::sr_datastore_t::SR_DS_RUNNING as isize,
     Candidate = ffi::sr_datastore_t::SR_DS_CANDIDATE as isize,
     Operational = ffi::sr_datastore_t::SR_DS_OPERATIONAL as isize,
-}
-
-/// Sysrepo Type.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum Type {
-    Unknown = ffi::sr_val_type_t::SR_UNKNOWN_T as isize,
-    List = ffi::sr_val_type_t::SR_LIST_T as isize,
-    Container = ffi::sr_val_type_t::SR_CONTAINER_T as isize,
-    ContainerPresence = ffi::sr_val_type_t::SR_CONTAINER_PRESENCE_T as isize,
-    LeafEmpty = ffi::sr_val_type_t::SR_LEAF_EMPTY_T as isize,
-    Notification = ffi::sr_val_type_t::SR_NOTIFICATION_T as isize,
-    Binary = ffi::sr_val_type_t::SR_BINARY_T as isize,
-    Bits = ffi::sr_val_type_t::SR_BITS_T as isize,
-    Bool = ffi::sr_val_type_t::SR_BOOL_T as isize,
-    Decimal64 = ffi::sr_val_type_t::SR_DECIMAL64_T as isize,
-    Enum = ffi::sr_val_type_t::SR_ENUM_T as isize,
-    IdentityRef = ffi::sr_val_type_t::SR_IDENTITYREF_T as isize,
-    InstanceId = ffi::sr_val_type_t::SR_INSTANCEID_T as isize,
-    Int8 = ffi::sr_val_type_t::SR_INT8_T as isize,
-    Int16 = ffi::sr_val_type_t::SR_INT16_T as isize,
-    Int32 = ffi::sr_val_type_t::SR_INT32_T as isize,
-    Int64 = ffi::sr_val_type_t::SR_INT64_T as isize,
-    String = ffi::sr_val_type_t::SR_STRING_T as isize,
-    UInt8 = ffi::sr_val_type_t::SR_UINT8_T as isize,
-    UInt16 = ffi::sr_val_type_t::SR_UINT16_T as isize,
-    UInt32 = ffi::sr_val_type_t::SR_UINT32_T as isize,
-    UInt64 = ffi::sr_val_type_t::SR_UINT64_T as isize,
-    AnyXml = ffi::sr_val_type_t::SR_ANYXML_T as isize,
-    AnyData = ffi::sr_val_type_t::SR_ANYDATA_T as isize,
 }
 
 bitflags! {
@@ -217,109 +186,6 @@ impl TryFrom<ffi::sr_ev_notif_type_t::Type> for NotificationType {
             ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED => Ok(NotificationType::Suspended),
             ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED => Ok(NotificationType::Resumed),
             _ => Err("Invalid NotificationType"),
-        }
-    }
-}
-
-/// Single Sysrepo Value.
-pub struct Value {
-    value: *mut ffi::sr_val_t,
-}
-
-impl Value {
-    pub fn from(value: *mut ffi::sr_val_t) -> Self {
-        Self { value: value }
-    }
-
-    pub fn value(&self) -> *mut ffi::sr_val_t {
-        self.value
-    }
-}
-
-impl Drop for Value {
-    fn drop(&mut self) {
-        unsafe {
-            ffi::sr_free_val(self.value);
-        }
-    }
-}
-
-/// Slice of Sysrepo Value.
-///  The size of slice cannot change.
-pub struct ValueSlice {
-    /// Pointer to raw sr_val_t array.
-    values: *mut ffi::sr_val_t,
-
-    /// Length of this slice.
-    len: size_t,
-
-    /// Owned flag.
-    owned: bool,
-}
-
-impl ValueSlice {
-    pub fn new(capacity: size_t, owned: bool) -> Self {
-        Self {
-            values: unsafe {
-                libc::malloc(mem::size_of::<ffi::sr_val_t>() * capacity as usize) as *mut ffi::sr_val_t
-            },
-            len: capacity,
-            owned: owned,
-        }
-    }
-
-    pub fn from(values: *mut ffi::sr_val_t, len: size_t, owned: bool) -> Self {
-        Self {
-            values: values,
-            len: len,
-            owned: owned,
-        }
-    }
-
-    pub fn at_mut(&mut self, index: usize) -> &mut ffi::sr_val_t {
-        let slice = unsafe { slice::from_raw_parts_mut(self.values, self.len as usize) };
-
-        &mut slice[index]
-    }
-
-    pub fn as_slice(&mut self) -> &[ffi::sr_val_t] {
-        unsafe { slice::from_raw_parts(self.values, self.len as usize) }
-    }
-
-    pub fn as_ptr(&self) -> *mut ffi::sr_val_t {
-        self.values
-    }
-
-    pub fn len(&self) -> size_t {
-        self.len
-    }
-
-    pub fn set_owned(&mut self) {
-        self.owned = true;
-    }
-
-    pub fn set_int64_value(&mut self, index: usize, dflt: bool, xpath: &str, value: i64) -> Result<()> {
-        let xpath = str_to_cstring(&xpath)?;
-        let xpath_ptr = xpath.as_ptr();
-
-        let val = self.at_mut(index) as *mut ffi::sr_val_t;
-        unsafe {
-            (*val).xpath = libc::strdup(xpath_ptr);
-            (*val).type_ = ffi::sr_val_type_t::SR_INT64_T;
-            (*val).dflt = if dflt { 0 } else { 1 }; //TODO: It is really those values?
-            (*val).data.int64_val = value;
-        }
-
-        Ok(())
-    }
-}
-
-impl Drop for ValueSlice {
-    fn drop(&mut self) {
-        if self.owned {
-            unsafe {
-                ffi::sr_free_values(self.values, self.len);
-            }
         }
     }
 }
@@ -493,36 +359,6 @@ impl<'b> Session<'b> {
         }
 
         unsafe { Ok(ManagedData::from_raw(self.conn, data)) }
-    }
-
-    /// Get items from given Xpath, anre return result in Value slice.
-    pub fn get_items(
-        &self,
-        xpath: &str,
-        timeout: Option<Duration>,
-        opts: u32,
-    ) -> Result<ValueSlice> {
-        let xpath = str_to_cstring(xpath)?;
-        let timeout_ms = timeout.map_or(0, |timeout| timeout.as_millis() as u32);
-        let mut values_count: size_t = 0;
-        let mut values = ptr::null_mut();
-
-        let rc = unsafe {
-            ffi::sr_get_items(
-                self.sess,
-                xpath.as_ptr(),
-                timeout_ms,
-                opts,
-                &mut values,
-                &mut values_count as *mut size_t,
-            )
-        };
-        let rc = rc as ffi::sr_error_t::Type;
-        if rc != ffi::sr_error_t::SR_ERR_OK {
-            Err(Error { errcode: rc })
-        } else {
-            Ok(ValueSlice::from(values, values_count, true))
-        }
     }
 
     /// Set string item to given Xpath.
