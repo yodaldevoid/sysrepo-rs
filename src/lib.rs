@@ -90,13 +90,20 @@ impl Default for GetOptions {
     }
 }
 
-/// Edit Flag.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum EditFlag {
-    Default = ffi::sr_edit_flag_t::SR_EDIT_DEFAULT as isize,
-    NonRecursive = ffi::sr_edit_flag_t::SR_EDIT_NON_RECURSIVE as isize,
-    Strict = ffi::sr_edit_flag_t::SR_EDIT_STRICT as isize,
-    Isolate = ffi::sr_edit_flag_t::SR_EDIT_ISOLATE as isize,
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+    pub struct EditOptions: ffi::sr_edit_flag_t::Type {
+        const NON_RECURSIVE = ffi::sr_edit_flag_t::SR_EDIT_NON_RECURSIVE;
+        const STRICT = ffi::sr_edit_flag_t::SR_EDIT_STRICT;
+        const ISOLATE = ffi::sr_edit_flag_t::SR_EDIT_ISOLATE;
+    }
+}
+
+impl Default for EditOptions {
+    fn default() -> Self {
+        EditOptions::empty()
+    }
 }
 
 /// Move Position.
@@ -367,7 +374,7 @@ impl<'b> Session<'b> {
         path: &str,
         value: &str,
         origin: Option<&str>,
-        opts: u32,
+        options: EditOptions,
     ) -> Result<()> {
         let path = str_to_cstring(path)?;
         let value = str_to_cstring(value)?;
@@ -378,7 +385,13 @@ impl<'b> Session<'b> {
         let origin_ptr = origin.map_or(ptr::null(), |orig| orig.as_ptr());
 
         let rc = unsafe {
-            ffi::sr_set_item_str(self.sess, path.as_ptr(), value.as_ptr(), origin_ptr, opts)
+            ffi::sr_set_item_str(
+                self.sess,
+                path.as_ptr(),
+                value.as_ptr(),
+                origin_ptr,
+                options.bits(),
+            )
         };
         let rc = rc as ffi::sr_error_t::Type;
         if rc != ffi::sr_error_t::SR_ERR_OK {
