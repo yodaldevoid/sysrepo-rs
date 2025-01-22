@@ -191,41 +191,6 @@ impl fmt::Display for Event {
     }
 }
 
-/// Change Oper.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum ChangeOper {
-    Created = ffi::sr_change_oper_t::SR_OP_CREATED as isize,
-    Modified = ffi::sr_change_oper_t::SR_OP_MODIFIED as isize,
-    Deleted = ffi::sr_change_oper_t::SR_OP_DELETED as isize,
-    Moved = ffi::sr_change_oper_t::SR_OP_MOVED as isize,
-}
-
-impl TryFrom<u32> for ChangeOper {
-    type Error = &'static str;
-
-    fn try_from(t: u32) -> std::result::Result<Self, Self::Error> {
-        match t {
-            ffi::sr_change_oper_t::SR_OP_CREATED => Ok(ChangeOper::Created),
-            ffi::sr_change_oper_t::SR_OP_MODIFIED => Ok(ChangeOper::Modified),
-            ffi::sr_change_oper_t::SR_OP_DELETED => Ok(ChangeOper::Deleted),
-            ffi::sr_change_oper_t::SR_OP_MOVED => Ok(ChangeOper::Moved),
-            _ => Err("Invalid ChangeOper"),
-        }
-    }
-}
-
-impl fmt::Display for ChangeOper {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = match self {
-            ChangeOper::Created => "Created",
-            ChangeOper::Modified => "Modified",
-            ChangeOper::Deleted => "Deleted",
-            ChangeOper::Moved => "Moved",
-        };
-        write!(f, "{}", s)
-    }
-}
-
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum NotificationType {
     Realtime = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_REALTIME as isize,
@@ -907,18 +872,17 @@ impl<'b> Session<'b> {
             .unwrap_or(ffi::sr_error_t::SR_ERR_OK) as c_int
     }
 
-    /// Get changes iter.
-    pub fn get_changes_iter(&self, path: &str) -> Result<ChangeIter> {
+    // TODO: only valid in module_change_subscribe callback
+    pub fn get_changes_iter(&self, xpath: &str) -> Result<Changes> {
+        let xpath = str_to_cstring(xpath)?;
         let mut it = ptr::null_mut();
-
-        let path = str_to_cstring(path)?;
-        let rc = unsafe { ffi::sr_get_changes_iter(self.sess, path.as_ptr(), &mut it) };
+        let rc = unsafe { ffi::sr_get_changes_iter(self.sess, xpath.as_ptr(), &mut it) };
 
         let rc = rc as ffi::sr_error_t::Type;
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            Ok(ChangeIter::from(it))
+            Ok(unsafe { Changes::from_raw(self, it) })
         }
     }
 
@@ -972,33 +936,6 @@ impl<'b> Session<'b> {
             Err(Error { errcode: rc })
         } else {
             Ok(ValueSlice::from(output, output_count, true))
-        }
-    }
-
-    /// Return oper, old_value, new_value with next iter.
-    pub fn get_change_next(&self, iter: &mut ChangeIter) -> Option<(ChangeOper, Value, Value)> {
-        let mut oper: ffi::sr_change_oper_t::Type = 0;
-        let mut old_value: *mut ffi::sr_val_t = ptr::null_mut();
-        let mut new_value: *mut ffi::sr_val_t = ptr::null_mut();
-
-        let rc = unsafe {
-            ffi::sr_get_change_next(
-                self.sess,
-                iter.iter(),
-                &mut oper,
-                &mut old_value,
-                &mut new_value,
-            )
-        };
-
-        let rc = rc as ffi::sr_error_t::Type;
-        if rc == ffi::sr_error_t::SR_ERR_OK {
-            match ChangeOper::try_from(oper) {
-                Ok(oper) => Some((oper, Value::from(old_value), Value::from(new_value))),
-                Err(_) => None,
-            }
-        } else {
-            None
         }
     }
 }
@@ -1108,28 +1045,148 @@ impl Drop for Subscription<'_> {
 unsafe impl Send for Subscription<'_> {}
 unsafe impl Sync for Subscription<'_> {}
 
-/// Sysrepo Changes Iterator.
-pub struct ChangeIter {
-    /// Raw pointer to iter.
+pub struct Changes<'a> {
+    sess: &'a Session<'a>,
+    ctx: ManuallyDrop<Context>,
     iter: *mut ffi::sr_change_iter_t,
 }
 
-impl ChangeIter {
-    pub fn from(iter: *mut ffi::sr_change_iter_t) -> Self {
-        Self { iter: iter }
+impl<'a> Changes<'a> {
+    pub unsafe fn from_raw(sess: &'a Session<'a>, iter: *mut ffi::sr_change_iter_t) -> Self {
+        // Aquire the context and then drop it right away.
+        // SAFETY: This pointer will be valid as the context read lock continues
+        // to be held by the iterator.
+        let ctx = unsafe {
+            let ctx = ffi::sr_acquire_context(sess.conn.conn);
+            ffi::sr_release_context(sess.conn.conn);
+            ManuallyDrop::new(Context::from_raw(&(), ctx as *mut _))
+        };
+        Self { sess, ctx, iter }
     }
 
-    pub fn iter(&mut self) -> *mut ffi::sr_change_iter_t {
-        self.iter
+    pub fn iter<'b>(&'b self) -> ChangesIter<'b> {
+        ChangesIter {
+            sess: self.sess.sess,
+            ctx: &self.ctx,
+            iter: self.iter,
+        }
     }
 }
 
-impl Drop for ChangeIter {
+impl Drop for Changes<'_> {
     fn drop(&mut self) {
         unsafe {
             ffi::sr_free_change_iter(self.iter);
         }
     }
+}
+
+impl<'a> IntoIterator for &'a Changes<'_> {
+    type Item = Result<(ManagedDataTree<'a>, ChangeOperation<'a>)>;
+    type IntoIter = ChangesIter<'a>;
+
+    fn into_iter(self) -> ChangesIter<'a> {
+        self.iter()
+    }
+}
+
+pub struct ChangesIter<'a> {
+    sess: *mut ffi::sr_session_ctx_t,
+    ctx: &'a Context,
+    iter: *mut ffi::sr_change_iter_t,
+}
+
+impl<'a> Iterator for ChangesIter<'a> {
+    // TODO: maybe should be a wrapper around a DataNodeRef instead
+    type Item = Result<(ManagedDataTree<'a>, ChangeOperation<'a>)>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut oper = 0;
+        let mut node = ptr::null();
+        let mut prev_value = ptr::null();
+        let mut prev_list_keys = ptr::null();
+        let mut prev_default_flag = 0;
+
+        let rc = unsafe {
+            ffi::sr_get_change_tree_next(
+                self.sess,
+                self.iter,
+                &mut oper,
+                &mut node,
+                &mut prev_value,
+                &mut prev_list_keys,
+                &mut prev_default_flag,
+            )
+        };
+
+        let rc = rc as ffi::sr_error_t::Type;
+        match rc {
+            ffi::sr_error_t::SR_ERR_OK => {
+                let node = unsafe { DataTree::from_raw(&self.ctx, node as *mut _) };
+                let node = ManagedDataTree {
+                    tree: ManuallyDrop::new(node),
+                };
+                let oper = match oper {
+                    ffi::sr_change_oper_t::SR_OP_CREATED if !prev_value.is_null() => {
+                        ChangeOperation::CreatedLeafListUserOrdered {
+                            previous_value: unsafe { CStr::from_ptr(prev_value).to_str().unwrap() },
+                        }
+                    }
+                    ffi::sr_change_oper_t::SR_OP_CREATED if !prev_list_keys.is_null() => {
+                        ChangeOperation::CreatedListUserOrdered {
+                            previous_key: unsafe {
+                                CStr::from_ptr(prev_list_keys).to_str().unwrap()
+                            },
+                        }
+                    }
+                    ffi::sr_change_oper_t::SR_OP_CREATED => ChangeOperation::Created,
+                    ffi::sr_change_oper_t::SR_OP_MODIFIED => ChangeOperation::Modified {
+                        previous_value: unsafe { CStr::from_ptr(prev_value).to_str().unwrap() },
+                        previous_default: prev_default_flag != 0,
+                    },
+                    ffi::sr_change_oper_t::SR_OP_DELETED => ChangeOperation::Deleted,
+                    ffi::sr_change_oper_t::SR_OP_MOVED if !prev_value.is_null() => {
+                        ChangeOperation::MovedLeafListUserOrdered {
+                            previous_value: unsafe { CStr::from_ptr(prev_value).to_str().unwrap() },
+                        }
+                    }
+                    ffi::sr_change_oper_t::SR_OP_MOVED if !prev_list_keys.is_null() => {
+                        ChangeOperation::MovedListUserOrdered {
+                            previous_key: unsafe {
+                                CStr::from_ptr(prev_list_keys).to_str().unwrap()
+                            },
+                        }
+                    }
+                    _ => unreachable!(),
+                };
+                Some(Ok((node, oper)))
+            }
+            ffi::sr_error_t::SR_ERR_NOT_FOUND => None,
+            _ => Some(Err(Error { errcode: rc })),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ChangeOperation<'a> {
+    Created,
+    CreatedLeafListUserOrdered {
+        previous_value: &'a str,
+    },
+    CreatedListUserOrdered {
+        previous_key: &'a str,
+    },
+    Modified {
+        previous_value: &'a str,
+        previous_default: bool,
+    },
+    Deleted,
+    MovedLeafListUserOrdered {
+        previous_value: &'a str,
+    },
+    MovedListUserOrdered {
+        previous_key: &'a str,
+    },
 }
 
 fn str_to_cstring(s: &str) -> Result<CString> {

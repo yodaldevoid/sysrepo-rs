@@ -7,11 +7,11 @@
 mod utils;
 
 use std::env;
-use std::ffi::CStr;
 use std::thread;
 use std::time;
 
 use sysrepo::*;
+use yang::data::DataTree;
 
 use utils::*;
 
@@ -23,48 +23,53 @@ fn print_help(program: &str) {
     );
 }
 
-/// Print change.
-fn print_change(oper: ChangeOper, old_val: Value, new_val: Value) {
-    let old_val = unsafe { old_val.value().as_ref() };
-    let new_val = unsafe { new_val.value().as_ref() };
-
+fn print_change(node: &DataTree, oper: ChangeOperation) {
+    let node = node.reference().unwrap();
     match oper {
-        ChangeOper::Created => {
+        ChangeOperation::Created
+        | ChangeOperation::CreatedLeafListUserOrdered { .. }
+        | ChangeOperation::CreatedListUserOrdered { .. } => {
             print!("CREATED: ");
-            print_val(new_val.unwrap());
+            print_node(node);
         }
-        ChangeOper::Deleted => {
+        ChangeOperation::Deleted => {
             print!("DELETED: ");
-            print_val(old_val.unwrap());
+            print_node(node);
         }
-        ChangeOper::Modified => {
-            print!("MODIFIED: ");
-            print_val(old_val.unwrap());
-            print!("to ");
-            print_val(new_val.unwrap());
+        ChangeOperation::Modified {
+            previous_value,
+            previous_default,
+        } => {
+            let default = if previous_default { " [default]" } else { "" };
+            print!("MODIFIED: {}{} to ", previous_value, default);
+            print_node(node);
         }
-        ChangeOper::Moved => {
-            let new_val = new_val.unwrap();
-            let xpath = unsafe { CStr::from_ptr(new_val.xpath).to_str().unwrap() };
-            println!("MOVED: {}", xpath);
+        ChangeOperation::MovedLeafListUserOrdered {
+            previous_value: previous,
+        }
+        | ChangeOperation::MovedListUserOrdered {
+            previous_key: previous,
+        } => {
+            print!("MOVED: ");
+            print_node(node);
+            if previous.is_empty() {
+                println!(" to the beginning");
+            } else {
+                println!(" after {}", previous);
+            }
         }
     }
 }
 
-/// Print current config.
-fn print_current_config(sess: &Session, mod_name: &str) {
+fn print_current_config(sess: &Session, mod_name: &str) -> Result<()> {
     let xpath = format!("/{}:*//.", mod_name);
-    let xpath = &xpath[..];
 
-    // Get the values.
-    match sess.get_items(&xpath, None, 0) {
-        Err(_) => {}
-        Ok(mut values) => {
-            for v in values.as_slice() {
-                print_val(&v);
-            }
-        }
+    let data = sess.get_data(&xpath, None, Default::default(), Default::default())?;
+    for node in data.tree().traverse() {
+        print_node(node);
     }
+
+    Ok(())
 }
 
 /// Main.
@@ -115,19 +120,15 @@ fn run() -> bool {
     println!("");
     println!(" ========== READING RUNNING CONFIG: ==========");
     println!("");
-    print_current_config(&sess, &mod_name);
+    print_current_config(&sess, &mod_name).unwrap();
 
     let f = |sess: &Session,
              sub_id: u32,
              mod_name: &str,
-             _path: Option<&str>,
+             xpath: Option<&str>,
              event: Event,
              _request_id: u32|
      -> Result<()> {
-        let mut sess = sess;
-        let path = "//.";
-        let mut iter = sess.get_changes_iter(&path)?;
-
         println!("");
         println!("");
         println!(
@@ -136,8 +137,21 @@ fn run() -> bool {
         );
         println!("");
 
-        while let Some((oper, old_value, new_value)) = sess.get_change_next(&mut iter) {
-            print_change(oper, old_value, new_value);
+        let path = if let Some(xpath) = xpath {
+            format!("{}//.", xpath)
+        } else {
+            format!("/{}:*//.", mod_name)
+        };
+        let changes = match sess.get_changes_iter(&path) {
+            Ok(iter) => iter,
+            Err(_) => return Ok(()),
+        };
+
+        for change in &changes {
+            match change {
+                Ok((node, oper)) => print_change(&node, oper),
+                Err(_) => return Ok(()),
+            }
         }
 
         println!("");
@@ -148,7 +162,7 @@ fn run() -> bool {
             println!("");
             println!(" ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========");
             println!("");
-            print_current_config(&mut sess, mod_name);
+            print_current_config(sess, mod_name)?;
         }
 
         Ok(())
