@@ -389,8 +389,11 @@ impl<'b> Session<'b> {
     }
 
     /// Apply changes for the session.
-    pub fn apply_changes(&mut self, timeout: Option<Duration>) -> Result<()> {
-        let timeout_ms = timeout.map_or(0, |timeout| timeout.as_millis() as u32);
+    ///
+    /// The timeout is rounded to the nearest millisecond.
+    pub fn apply_changes(&mut self, timeout: Duration) -> Result<()> {
+        // TODO: double check that the duration is short enough
+        let timeout_ms = timeout.as_millis() as u32;
 
         let rc = unsafe { ffi::sr_apply_changes(self.sess, timeout_ms) };
         let rc = rc as ffi::sr_error_t::Type;

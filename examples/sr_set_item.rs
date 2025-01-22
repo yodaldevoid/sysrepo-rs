@@ -56,7 +56,7 @@ fn run() -> bool {
     }
 
     // Apply the change.
-    if let Err(_) = sess.apply_changes(None) {
+    if let Err(_) = sess.apply_changes(Default::default()) {
         return false;
     }
 
