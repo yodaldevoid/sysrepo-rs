@@ -2,12 +2,13 @@ use std::convert::TryFrom;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
+use std::marker::PhantomData;
 use std::mem::{self, ManuallyDrop};
+use std::num::NonZero;
 use std::ops::Deref;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 use std::slice;
-use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(feature = "yang2")]
@@ -101,15 +102,23 @@ pub enum Type {
     AnyData = ffi::sr_val_type_t::SR_ANYDATA_T as isize,
 }
 
-/// Get Oper Flag.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum GetOperFlag {
-    Default = ffi::sr_get_oper_flag_t::SR_OPER_DEFAULT as isize,
-    NoState = ffi::sr_get_oper_flag_t::SR_OPER_NO_STATE as isize,
-    NoConfig = ffi::sr_get_oper_flag_t::SR_OPER_NO_CONFIG as isize,
-    NoSubs = ffi::sr_get_oper_flag_t::SR_OPER_NO_SUBS as isize,
-    NoStored = ffi::sr_get_oper_flag_t::SR_OPER_NO_STORED as isize,
-    WithOrigin = ffi::sr_get_oper_flag_t::SR_OPER_WITH_ORIGIN as isize,
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+    pub struct GetOptions: ffi::sr_get_flag_t::Type {
+        const NO_STATE = ffi::sr_get_oper_flag_t::SR_OPER_NO_STATE;
+        const NO_CONFIG = ffi::sr_get_oper_flag_t::SR_OPER_NO_CONFIG;
+        const NO_SUBS = ffi::sr_get_oper_flag_t::SR_OPER_NO_SUBS;
+        const NO_STORED = ffi::sr_get_oper_flag_t::SR_OPER_NO_STORED;
+        const WITH_ORIGIN = ffi::sr_get_oper_flag_t::SR_OPER_WITH_ORIGIN;
+        const NO_FILTER = ffi::sr_get_flag_t::SR_GET_NO_FILTER;
+    }
+}
+
+impl Default for GetOptions {
+    fn default() -> Self {
+        GetOptions::empty()
+    }
 }
 
 /// Edit Flag.
@@ -482,21 +491,21 @@ impl<'b> Session<'b> {
         self.conn.get_context()
     }
 
-    /// Get tree from given XPath.
-    pub fn get_data<'a>(
-        &mut self,
-        context: &'a Arc<Context>,
+    /// Get a data tree for a given XPath.
+    ///
+    /// The timeout is rounded to the nearest millisecond.
+    pub fn get_data(
+        &self,
         xpath: &str,
-        max_depth: Option<u32>,
-        timeout: Option<Duration>,
-        opts: u32
-    ) -> Result<DataTree<'a>> {
+        max_depth: Option<NonZero<u32>>,
+        timeout: Duration,
+        options: GetOptions,
+    ) -> Result<ManagedData<'b>> {
         let xpath = str_to_cstring(xpath)?;
-        let max_depth = max_depth.unwrap_or(0);
-        let timeout_ms = timeout.map_or(0, |timeout| timeout.as_millis() as u32);
-
-        // SAFETY: data is used as output by sr_get_data and is not read
-        let mut data = ptr::null_mut();
+        let max_depth = max_depth.map(NonZero::get).unwrap_or(0);
+        // TODO: double check this actually fits
+        let timeout_ms = timeout.as_millis() as u32;
+        let mut data: *mut ffi::sr_data_t = ptr::null_mut();
 
         let rc = unsafe {
             ffi::sr_get_data(
@@ -504,7 +513,7 @@ impl<'b> Session<'b> {
                 xpath.as_ptr(),
                 max_depth,
                 timeout_ms,
-                opts,
+                options.bits(),
                 &mut data,
             )
         };
@@ -518,21 +527,7 @@ impl<'b> Session<'b> {
             });
         }
 
-        let conn = unsafe { ffi::sr_session_get_connection(self.sess) };
-
-        if unsafe { (*data).conn } != conn {
-            // It should never happen that the returned connection does not match the supplied one
-            // SAFETY: data was checked as not NULL just above
-            unsafe {
-                ffi::sr_release_data(data);
-            }
-
-            return Err(Error {
-                errcode: ffi::sr_error_t::SR_ERR_INTERNAL,
-            });
-        }
-
-        Ok(unsafe { DataTree::from_raw(context, (*data).tree) })
+        unsafe { Ok(ManagedData::from_raw(self.conn, data)) }
     }
 
     /// Get items from given Xpath, anre return result in Value slice.
@@ -1023,6 +1018,64 @@ impl Drop for Session<'_> {
 }
 
 unsafe impl Send for Session<'_> {}
+
+pub struct ManagedData<'a> {
+    ctx: ManuallyDrop<Context>,
+    data: *mut ffi::sr_data_t,
+    _ghost: PhantomData<&'a ()>,
+}
+
+impl<'a> ManagedData<'a> {
+    pub unsafe fn from_raw(conn: &'a Connection, data: *mut ffi::sr_data_t) -> Self {
+        debug_assert!(!data.is_null());
+        // Aquire the context and then drop it right away.
+        // SAFETY: This pointer will be valid as the context read lock continues
+        // to be held by the data tree.
+        let ctx = unsafe {
+            let ctx = ffi::sr_acquire_context(conn.conn) as *mut _;
+            ffi::sr_release_context(conn.conn);
+            ManuallyDrop::new(Context::from_raw(&(), ctx))
+        };
+        Self {
+            ctx,
+            data,
+            _ghost: PhantomData,
+        }
+    }
+
+    pub fn into_raw(self) -> *mut ffi::sr_data_t {
+        self.data
+    }
+
+    pub fn context(&self) -> &Context {
+        &self.ctx
+    }
+
+    pub fn tree(&self) -> ManagedDataTree<'_> {
+        let tree = unsafe { ManuallyDrop::new(DataTree::from_raw(&self.ctx, (*self.data).tree)) };
+        ManagedDataTree { tree }
+    }
+}
+
+impl Drop for ManagedData<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::sr_release_data(self.data);
+        }
+    }
+}
+
+pub struct ManagedDataTree<'a> {
+    tree: ManuallyDrop<DataTree<'a>>,
+}
+
+impl<'a> Deref for ManagedDataTree<'a> {
+    type Target = DataTree<'a>;
+
+    fn deref(&self) -> &DataTree<'a> {
+        &self.tree
+    }
+}
 
 pub struct Subscription<'a> {
     subscr: *mut ffi::sr_subscription_ctx_t,

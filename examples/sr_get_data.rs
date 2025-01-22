@@ -4,10 +4,8 @@
 //
 
 use std::env;
-use std::sync::Arc;
 
 use sysrepo::*;
-use yang::context::{Context, ContextFlags};
 use yang::data::{Data, DataFormat, DataPrinterFlags};
 
 /// Show help.
@@ -67,27 +65,24 @@ fn run() -> bool {
     };
 
     // Start session.
-    let mut sess = match sr.start_session(ds) {
+    let sess = match sr.start_session(ds) {
         Ok(sess) => sess,
         Err(_) => return false,
     };
 
-    // Setup libyang context.
-    let ctx =
-        Arc::new(Context::new(ContextFlags::NO_YANGLIBRARY).expect("Failed to create context"));
-
     // Get the data.
     let data = sess
-        .get_data(&ctx, &xpath, None, None, 0)
+        .get_data(&xpath, None, Default::default(), Default::default())
         .expect("Failed to get data");
 
     // Print data tree in the XML format.
-    data.print_file(
-        std::io::stdout(),
-        DataFormat::XML,
-        DataPrinterFlags::WD_ALL | DataPrinterFlags::WITH_SIBLINGS,
-    )
-    .expect("Failed to print data tree");
+    data.tree()
+        .print_file(
+            std::io::stdout(),
+            DataFormat::XML,
+            DataPrinterFlags::WD_ALL | DataPrinterFlags::WITH_SIBLINGS,
+        )
+        .expect("Failed to print data tree");
 
     true
 }
