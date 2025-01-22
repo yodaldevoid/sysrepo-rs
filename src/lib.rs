@@ -106,15 +106,6 @@ impl Default for EditOptions {
     }
 }
 
-/// Move Position.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum MovePosition {
-    Before = ffi::sr_move_position_t::SR_MOVE_BEFORE as isize,
-    After = ffi::sr_move_position_t::SR_MOVE_AFTER as isize,
-    First = ffi::sr_move_position_t::SR_MOVE_FIRST as isize,
-    Last = ffi::sr_move_position_t::SR_MOVE_LAST as isize,
-}
-
 bitflags! {
     #[repr(transparent)]
     #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
