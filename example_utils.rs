@@ -4,6 +4,28 @@ use std::sync::Once;
 use nix::sys::signal;
 use sysrepo::yang::data::DataNodeRef;
 use sysrepo::yang::schema::{DataValue, SchemaNodeKind};
+use sysrepo::Datastore;
+
+#[allow(dead_code)]
+pub fn datastore_to_str(ds: &Datastore) -> &str {
+    match ds {
+        Datastore::Startup => "startup",
+        Datastore::Running => "running",
+        Datastore::Candidate => "candidate",
+        Datastore::Operational => "operational",
+    }
+}
+
+#[allow(dead_code)]
+pub fn str_to_datastore(s: &str) -> std::result::Result<Datastore, ()> {
+    match s {
+        "startup" => Ok(Datastore::Startup),
+        "running" => Ok(Datastore::Running),
+        "candidate" => Ok(Datastore::Candidate),
+        "operational" => Ok(Datastore::Operational),
+        _ => Err(()),
+    }
+}
 
 #[allow(dead_code)]
 pub fn print_node(node: DataNodeRef) {

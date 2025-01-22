@@ -1,64 +1,41 @@
-//
-// Sysrepo-examples.
-//   sr_set_item
-//
-
+/// An example of an application that sets a value.
+///
+/// Adapted from `sysrepo` example rs_set_item_example.c`.
 use std::env;
 
 use sysrepo::*;
 
-/// Show help.
-fn print_help(program: &str) {
-    println!("Usage: {} <x-path-to-set> <value-to-set>", program);
-}
-
-/// Main.
-fn main() {
-    if run() {
-        std::process::exit(0);
-    } else {
-        std::process::exit(0);
-    }
-}
-
-fn run() -> bool {
+fn main() -> std::result::Result<(), ()> {
     let args: Vec<String> = env::args().collect();
-    let program = args[0].clone();
 
     if args.len() != 3 {
-        print_help(&program);
-        return false;
+        println!("Usage: {} <x-path-to-set> <value-to-set>", args[0]);
+        return Err(());
     }
 
     let xpath = args[1].clone();
     let value = args[2].clone();
 
-    println!(r#"Application will get "{}" to "{}"."#, xpath, value);
+    println!("Application will get \"{}\" to \"{}\".", xpath, value);
 
     // Turn logging on.
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let sr = match Connection::new(Default::default()) {
-        Ok(sr) => sr,
-        Err(_) => return false,
-    };
+    let connection = Connection::new(Default::default()).map_err(|_| ())?;
 
     // Start session.
-    let mut sess = match sr.start_session(Datastore::Running) {
-        Ok(sess) => sess,
-        Err(_) => return false,
-    };
+    let mut session = connection
+        .start_session(Datastore::Running)
+        .map_err(|_| ())?;
 
     // Set the value.
-    if let Err(_) = sess.set_item_str(&xpath, &value, None, Default::default()) {
-        return false;
-    }
+    session
+        .set_item_str(&xpath, &value, None, Default::default())
+        .map_err(|_| ())?;
 
     // Apply the change.
-    if let Err(_) = sess.apply_changes(Default::default()) {
-        return false;
-    }
+    session.apply_changes(Default::default()).map_err(|_| ())?;
 
-    true
+    Ok(())
 }

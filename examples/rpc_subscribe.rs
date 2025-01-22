@@ -1,7 +1,6 @@
-//
-// Sysrepo-examples.
-//   rpc_subscribe
-//
+/// An example of an application subscribing to an RPC.
+///
+/// Adapted from `sysrepo` example `rpc_subscribe_example.c`.
 
 #[path = "../example_utils.rs"]
 mod utils;
@@ -15,47 +14,28 @@ use yang::data::DataTree;
 
 use utils::*;
 
-/// Show help.
-fn print_help(program: &str) {
-    println!("Usage: {} <path-to-rpc>", program);
-}
-
-/// Main.
-fn main() {
-    if run() {
-        std::process::exit(0);
-    } else {
-        std::process::exit(1);
-    }
-}
-
-fn run() -> bool {
+fn main() -> std::result::Result<(), ()> {
     let args: Vec<String> = env::args().collect();
-    let program = args[0].clone();
 
     if args.len() != 2 {
-        print_help(&program);
-        return false;
+        println!("Usage: {} <path-to-rpc>", args[0]);
+        return Err(());
     }
 
     let path = args[1].clone();
 
-    println!(r#"Application will subscribe "{}" RPC."#, path);
+    println!("Application will subscribe \"{}\" RPC.", path);
 
     // Turn logging on.
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let sr = match Connection::new(Default::default()) {
-        Ok(sr) => sr,
-        Err(_) => return false,
-    };
+    let connection = Connection::new(Default::default()).map_err(|_| ())?;
 
     // Start session.
-    let sess = match sr.start_session(Datastore::Running) {
-        Ok(sess) => sess,
-        Err(_) => return false,
-    };
+    let session = connection
+        .start_session(Datastore::Running)
+        .map_err(|_| ())?;
 
     // Callback function.
     let f = |_sess: &Session,
@@ -64,8 +44,7 @@ fn run() -> bool {
              input: &DataTree,
              _event: Event,
              _request_id: u32,
-             output: &mut DataTree|
-     -> Result<()> {
+             output: &mut DataTree| {
         println!(
             "\n\n ========== RPC \"{}\" RECEIVED: =======================\n",
             path
@@ -87,9 +66,9 @@ fn run() -> bool {
     };
 
     // Subscribe for the RPC.
-    if let Err(_) = sess.rpc_subscribe(&path, f, 0, Default::default()) {
-        return false;
-    }
+    session
+        .rpc_subscribe(&path, f, 0, Default::default())
+        .map_err(|_| ())?;
 
     println!("\n\n ========== LISTENING FOR NOTIFICATIONS ==========\n");
 
@@ -100,5 +79,5 @@ fn run() -> bool {
 
     println!("Application exit requested, exiting.");
 
-    true
+    Ok(())
 }

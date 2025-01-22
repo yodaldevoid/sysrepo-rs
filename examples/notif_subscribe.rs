@@ -1,7 +1,6 @@
-//
-// Sysrepo-examples.
-//   notif_subscribe
-//
+/// An example of an application subscribing to a notification.
+///
+/// Adapted from `sysrepo` example `notif_subscribe_example.c`.
 
 #[path = "../example_utils.rs"]
 mod utils;
@@ -15,41 +14,22 @@ use yang::data::DataTree;
 
 use utils::*;
 
-/// Show help.
-fn print_help(program: &str) {
-    println!(
-        "Usage: {} <module-with-notification> [<xpath-filtering-notifications>]",
-        program
-    );
-}
-
-/// Main.
-fn main() {
-    if run() {
-        std::process::exit(0);
-    } else {
-        std::process::exit(1);
-    }
-}
-
-fn run() -> bool {
+fn main() -> std::result::Result<(), ()> {
     let args: Vec<String> = env::args().collect();
-    let program = args[0].clone();
 
     if args.len() != 2 && args.len() != 3 {
-        print_help(&program);
-        return false;
+        println!(
+            "Usage: {} <module-with-notification> [<xpath-filtering-notifications>]",
+            args[0],
+        );
+        return Err(());
     }
 
     let mod_name = args[1].clone();
-    let xpath = if args.len() == 3 {
-        Some(args[2].clone())
-    } else {
-        None
-    };
+    let xpath = args.get(2);
 
     println!(
-        r#"Application will subscribe "{}" notifications."#,
+        "Application will subscribe \"{}\" notifications.\n",
         mod_name
     );
 
@@ -57,32 +37,24 @@ fn run() -> bool {
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let sr = match Connection::new(Default::default()) {
-        Ok(sr) => sr,
-        Err(_) => return false,
-    };
+    let connection = Connection::new(Default::default()).map_err(|_| ())?;
 
     // Start session.
-    let sess = match sr.start_session(Datastore::Running) {
-        Ok(sess) => sess,
-        Err(_) => return false,
-    };
+    let session = connection
+        .start_session(Datastore::Running)
+        .map_err(|_| ())?;
 
     // Callback function.
-    let f = |_sess: &Session,
-             sub_id: u32,
-             _notif_type: NotificationType,
-             tree: &DataTree,
-             _timestamp: time::SystemTime| {
+    let notif_cb = |_sess: &Session,
+                    _sub_id: u32,
+                    _notif_type: NotificationType,
+                    tree: &DataTree,
+                    _timestamp: time::SystemTime| {
         let node = tree.reference().unwrap();
-        println!("");
-        println!("");
         println!(
-            r#" ========== NOTIFICATION ({}) "{}" RECEIVED ======================="#,
-            sub_id,
+            "\n\n ========== NOTIFICATION \"{}\" RECEIVED =======================\n",
             node.path(),
         );
-        println!("");
 
         for node in node.traverse() {
             print_node(node);
@@ -90,16 +62,16 @@ fn run() -> bool {
     };
 
     // Subscribe for the notifications.
-    if let Err(_) = sess.notif_subscribe(
-        &mod_name,
-        xpath.as_deref(),
-        None,
-        None,
-        f,
-        Default::default(),
-    ) {
-        return false;
-    }
+    session
+        .notif_subscribe(
+            &mod_name,
+            xpath.map(String::as_str),
+            None,
+            None,
+            notif_cb,
+            Default::default(),
+        )
+        .map_err(|_| ())?;
 
     println!("\n\n ========== LISTENING FOR NOTIFICATIONS ==========\n");
 
@@ -111,5 +83,5 @@ fn run() -> bool {
 
     println!("Application exit requested, exiting.");
 
-    true
+    Ok(())
 }

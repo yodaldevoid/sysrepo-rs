@@ -1,7 +1,6 @@
-//
-// Sysrepo-examples.
-//   application_changes
-//
+/// An example of an application handling changes.
+///
+/// Adapted from `sysrepo` example `application_changes_example.c`.
 
 #[path = "../example_utils.rs"]
 mod utils;
@@ -14,14 +13,6 @@ use sysrepo::*;
 use yang::data::DataTree;
 
 use utils::*;
-
-/// Show help.
-fn print_help(program: &str) {
-    println!(
-        "Usage: {} <module-to-subscribe> [<xpath-to-subscribe>]",
-        program
-    );
-}
 
 fn print_change(node: &DataTree, oper: ChangeOperation) {
     let node = node.reference().unwrap();
@@ -72,77 +63,75 @@ fn print_current_config(sess: &Session, mod_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Main.
-fn main() {
-    if run() {
-        std::process::exit(0);
-    } else {
-        std::process::exit(1);
-    }
-}
-
-fn run() -> bool {
+fn main() -> std::result::Result<(), ()> {
     let args: Vec<String> = env::args().collect();
-    let program = args[0].clone();
 
-    if args.len() != 2 && args.len() != 3 {
-        print_help(&program);
-        std::process::exit(1);
+    if args.len() < 2 || args.len() > 4 {
+        println!(
+            "Usage: {} <module-to-subscribe> [<xpath-to-subscribe>] [startup/running/operational/candidate]",
+            args[0],
+        );
+        return Err(());
     }
 
     let mod_name = args[1].clone();
+    let mut xpath: Option<String> = None;
+    let mut ds = Datastore::Running;
+
+    if let Some(arg) = args.get(2) {
+        if let Ok(datastore) = str_to_datastore(arg) {
+            ds = datastore;
+        } else {
+            xpath = Some(arg.clone());
+        }
+    }
+    if let Some(arg) = args.get(3) {
+        if let Ok(datastore) = str_to_datastore(arg) {
+            ds = datastore;
+        } else {
+            println!("Invalid datastore {}", arg);
+            return Err(());
+        }
+    }
+
+    let xpath = xpath.as_ref().map(String::as_str);
 
     println!(
-        r#"Application will watch for changes in "{}"."#,
-        if args.len() == 3 {
-            args[2].clone()
-        } else {
-            args[1].clone()
-        }
+        "Application will watch for \"{}\" changes in \"{}\" datastore.",
+        xpath.unwrap_or(&mod_name),
+        datastore_to_str(&ds),
     );
 
     // Turn logging on.
     log_stderr(LogLevel::Warn);
 
     // Connect to sysrepo.
-    let sr = match Connection::new(Default::default()) {
-        Ok(sr) => sr,
-        Err(_) => return false,
-    };
+    let connection = Connection::new(Default::default()).map_err(|_| ())?;
 
     // Start session.
-    let sess = match sr.start_session(Datastore::Running) {
-        Ok(sess) => sess,
-        Err(_) => return false,
-    };
+    let session = connection.start_session(ds).map_err(|_| ())?;
 
     // Read current config.
-    println!("");
-    println!(" ========== READING RUNNING CONFIG: ==========");
-    println!("");
-    print_current_config(&sess, &mod_name).unwrap();
+    println!("\n ========== READING RUNNING CONFIG: ==========\n");
+    print_current_config(&session, &mod_name).map_err(|_| ())?;
 
-    let f = |sess: &Session,
-             sub_id: u32,
-             mod_name: &str,
-             xpath: Option<&str>,
-             event: Event,
-             _request_id: u32|
-     -> Result<()> {
-        println!("");
-        println!("");
+    let module_change_cb = |session: &Session,
+                            _sub_id: u32,
+                            module_name: &str,
+                            xpath: Option<&str>,
+                            event: Event,
+                            _request_id: u32| {
         println!(
-            " ========== EVENT ({}) {} CHANGES: ====================================",
-            sub_id, event
+            "\n\n ========== EVENT {} CHANGES: ====================================\n",
+            event,
         );
-        println!("");
 
         let path = if let Some(xpath) = xpath {
             format!("{}//.", xpath)
         } else {
-            format!("/{}:*//.", mod_name)
+            format!("/{}:*//.", module_name)
         };
-        let changes = match sess.get_changes_iter(&path) {
+        let changes = match session.get_changes_iter(&path) {
             Ok(iter) => iter,
             Err(_) => return Ok(()),
         };
@@ -154,33 +143,20 @@ fn run() -> bool {
             }
         }
 
-        println!("");
-        print!(" ========== END OF CHANGES =======================================");
+        println!("\n ========== END OF CHANGES =======================================");
 
         if event == Event::Done {
-            println!("");
-            println!("");
-            println!(" ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========");
-            println!("");
-            print_current_config(sess, mod_name)?;
+            println!("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n");
+            print_current_config(&session, module_name)?;
         }
 
         Ok(())
     };
 
     // Subscribe for changes in running config.
-    if args.len() == 3 {
-        let xpath = args[2].clone();
-        match sess.module_change_subscribe(&mod_name, Some(&xpath[..]), f, 0, Default::default()) {
-            Err(_) => return false,
-            Ok(subscr) => subscr,
-        }
-    } else {
-        match sess.module_change_subscribe(&mod_name, None, f, 0, Default::default()) {
-            Err(_) => return false,
-            Ok(subscr) => subscr,
-        }
-    };
+    let _subscription = session
+        .module_change_subscribe(&mod_name, xpath, module_change_cb, 0, Default::default())
+        .map_err(|_| ())?;
 
     println!("\n\n ========== LISTENING FOR CHANGES ==========\n");
 
@@ -191,5 +167,5 @@ fn run() -> bool {
 
     println!("Application exit requested, exiting.");
 
-    true
+    Ok(())
 }
