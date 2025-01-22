@@ -727,9 +727,10 @@ impl<'b> Session<'b> {
         opts: ffi::sr_subscr_options_t,
     ) -> Result<Subscription<'a>>
     where
-        F: FnMut(&mut DataTree<'_>, u32, &str, &str, Option<&str>, u32) + 'static,
+        F: FnMut(&Session, u32, &str, &str, Option<&str>, u32, &mut DataTree) -> Result<()>
+            + 'static,
     {
-        let mut subscr = ptr::null_mut();
+        let mut subscr: *mut ffi::sr_subscription_ctx_t = ptr::null_mut();
         let data = Box::into_raw(Box::new(callback));
         let mod_name = str_to_cstring(mod_name)?;
         let path = str_to_cstring(path)?;
@@ -754,7 +755,6 @@ impl<'b> Session<'b> {
         }
     }
 
-    // TODO: allow callback to return an error
     unsafe extern "C" fn call_get_items<F>(
         sess: *mut ffi::sr_session_ctx_t,
         sub_id: u32,
@@ -766,7 +766,7 @@ impl<'b> Session<'b> {
         private_data: *mut c_void,
     ) -> c_int
     where
-        F: FnMut(&mut DataTree<'_>, u32, &str, &str, Option<&str>, u32),
+        F: FnMut(&Session, u32, &str, &str, Option<&str>, u32, &mut DataTree) -> Result<()>,
     {
         if private_data.is_null() || parent.is_null() {
             return ffi::sr_error_t::SR_ERR_INTERNAL as c_int;
@@ -776,11 +776,11 @@ impl<'b> Session<'b> {
 
         let conn = ffi::sr_session_get_connection(sess);
         let ctx = ffi::sr_acquire_context(conn);
-        // ctx will only be NULL if the context as already locked for writing.
-        if ctx.is_null() {
-            return ffi::sr_error_t::SR_ERR_LOCKED as c_int;
-        }
-        let ctx = Context::from_raw(&(), ctx as *mut _);
+        // ctx will never be NULL as the context is locked for reading before
+        // this callback is called.
+        let ctx = ManuallyDrop::new(Context::from_raw(&(), ctx as *mut _));
+        let conn = ManuallyDrop::new(Connection::from_raw(conn));
+        let sess = ManuallyDrop::new(Session::from_raw(&conn, sess));
         let mut tree = DataTree::new(&ctx);
 
         let mod_name = CStr::from_ptr(mod_name).to_str().unwrap();
@@ -791,13 +791,23 @@ impl<'b> Session<'b> {
             Some(CStr::from_ptr(request_xpath).to_str().unwrap())
         };
 
-        callback(&mut tree, sub_id, mod_name, path, request_xpath, request_id);
+        let res = callback(
+            &sess,
+            sub_id,
+            mod_name,
+            path,
+            request_xpath,
+            request_id,
+            &mut tree,
+        );
+
+        ffi::sr_release_context(conn.conn);
 
         *parent = tree.into_raw();
 
-        ffi::sr_release_context(conn);
-
-        ffi::sr_error_t::SR_ERR_OK as c_int
+        res.err()
+            .map(|e| e.errcode)
+            .unwrap_or(ffi::sr_error_t::SR_ERR_OK) as c_int
     }
 
     pub fn module_change_subscribe<'a, F>(

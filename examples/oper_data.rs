@@ -59,12 +59,13 @@ fn run() -> bool {
     };
 
     // Callback
-    let f = |tree: &mut DataTree<'_>,
+    let f = |_sess: &Session,
              sub_id: u32,
              mod_name: &str,
              path: &str,
              _request_xpath: Option<&str>,
-             _request_id: u32| {
+             _request_id: u32,
+             output: &mut DataTree<'_>| {
         println!("");
         println!("");
         println!(
@@ -74,11 +75,15 @@ fn run() -> bool {
         println!("");
 
         if mod_name == "examples" && path == "/examples:stats" {
-            tree.new_path("/examples:stats/counter", Some("852"), false)
+            output
+                .new_path("/examples:stats/counter", Some("852"), false)
                 .unwrap();
-            tree.new_path("/examples:stats/counter2", Some("1052"), false)
+            output
+                .new_path("/examples:stats/counter2", Some("1052"), false)
                 .unwrap();
         }
+
+        Ok(())
     };
 
     // Start session.
