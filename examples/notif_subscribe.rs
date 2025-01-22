@@ -12,7 +12,6 @@ use std::time;
 
 use sysrepo::*;
 use yang::data::DataTree;
-use yang::ffi::timespec;
 
 use utils::*;
 
@@ -74,7 +73,7 @@ fn run() -> bool {
              sub_id: u32,
              _notif_type: NotificationType,
              tree: &DataTree,
-             _timestamp: *mut timespec| {
+             _timestamp: time::SystemTime| {
         let node = tree.reference().unwrap();
         println!("");
         println!("");

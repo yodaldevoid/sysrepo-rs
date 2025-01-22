@@ -8,7 +8,7 @@ use std::num::NonZero;
 use std::ops::Deref;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 #[cfg(feature = "yang2")]
 pub use yang2 as yang;
@@ -419,13 +419,13 @@ impl<'b> Session<'b> {
         &'a self,
         mod_name: &str,
         xpath: Option<&str>,
-        start_time: Option<*mut timespec>,
-        stop_time: Option<*mut timespec>,
+        start_time: Option<SystemTime>,
+        stop_time: Option<SystemTime>,
         callback: F,
         options: SubscriptionOptions,
     ) -> Result<Subscription<'a>>
     where
-        F: FnMut(&Session, u32, NotificationType, &DataTree, *mut timespec) + 'static,
+        F: FnMut(&Session, u32, NotificationType, &DataTree, SystemTime) + 'static,
     {
         let mod_name = str_to_cstring(mod_name)?;
         let xpath = match xpath {
@@ -433,10 +433,25 @@ impl<'b> Session<'b> {
             None => None,
         };
         let xpath_ptr = xpath.map_or(ptr::null(), |xpath| xpath.as_ptr());
-        let start_time = start_time.unwrap_or(std::ptr::null_mut());
-        let stop_time = stop_time.unwrap_or(std::ptr::null_mut());
+        let into_timespec = |t: SystemTime| {
+            let d = t.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
+            timespec {
+                tv_sec: d.as_secs() as _,
+                tv_nsec: d.subsec_nanos() as _,
+            }
+        };
+        let start_time = start_time
+            .map(into_timespec)
+            .as_ref()
+            .map(|t| t as *const _)
+            .unwrap_or(ptr::null());
+        let stop_time = stop_time
+            .map(into_timespec)
+            .as_ref()
+            .map(|t| t as *const _)
+            .unwrap_or(ptr::null());
 
-        let mut subscr = ptr::null_mut();
+        let mut subscr: *mut ffi::sr_subscription_ctx_t = ptr::null_mut();
         let data = Box::into_raw(Box::new(callback));
         let rc = unsafe {
             ffi::sr_notif_subscribe_tree(
@@ -469,7 +484,7 @@ impl<'b> Session<'b> {
         private_data: *mut c_void,
     ) where
         // TODO: probably should pass DataNodeRef instead of DataTree
-        F: FnMut(&Session, u32, NotificationType, &DataTree, *mut timespec),
+        F: FnMut(&Session, u32, NotificationType, &DataTree, SystemTime),
     {
         let callback_ptr = private_data as *mut F;
         let callback = &mut *callback_ptr;
@@ -482,6 +497,10 @@ impl<'b> Session<'b> {
         let conn = ManuallyDrop::new(Connection::from_raw(conn));
         let sess = ManuallyDrop::new(Session::from_raw(&conn, sess));
         let notif = ManuallyDrop::new(DataTree::from_raw(&ctx, notif as *mut _));
+        let timestamp = timestamp.as_ref().unwrap();
+        // These casts are good enough for std.
+        let timestamp = SystemTime::UNIX_EPOCH
+            + Duration::new(timestamp.tv_sec as u64, timestamp.tv_nsec as u32);
         let notif_type = NotificationType::try_from(notif_type).expect("Convert error");
 
         callback(&sess, sub_id, notif_type, &notif, timestamp);
