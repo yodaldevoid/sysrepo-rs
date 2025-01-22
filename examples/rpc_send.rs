@@ -9,8 +9,9 @@ mod utils;
 use std::env;
 
 use sysrepo::*;
+use yang::data::DataTree;
 
-use utils::print_val;
+use utils::print_node;
 
 /// Show help.
 fn print_help(program: &str) {
@@ -50,6 +51,7 @@ fn run() -> bool {
         Ok(sr) => sr,
         Err(_) => return false,
     };
+    let ctx = sr.get_context().unwrap();
 
     // Start session.
     let mut sess = match sr.start_session(Datastore::Running) {
@@ -58,10 +60,15 @@ fn run() -> bool {
     };
 
     // Send the RPC.
-    match sess.rpc_send(&path, None, None) {
-        Ok(mut sr_values) => {
-            for v in sr_values.as_slice() {
-                print_val(&v);
+    let mut rpc = DataTree::new(&ctx);
+    if let Err(_) = rpc.new_path(&path, None, false) {
+        println!("Creating RPC \"{}\" failed.", path);
+        return false;
+    }
+    match sess.rpc_send(rpc, Default::default()) {
+        Ok(data) => {
+            for node in data.tree().traverse() {
+                print_node(node);
             }
         }
         Err(_) => return false,

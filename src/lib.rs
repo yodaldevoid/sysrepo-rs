@@ -903,39 +903,20 @@ impl<'b> Session<'b> {
     }
 
     /// Send RPC.
-    pub fn rpc_send(
-        &mut self,
-        path: &str,
-        input: Option<Vec<ffi::sr_val_t>>,
-        timeout: Option<Duration>,
-    ) -> Result<ValueSlice> {
-        let path = str_to_cstring(path)?;
-        let (input, input_cnt) = match input {
-            Some(mut input) => (input.as_mut_ptr(), input.len() as size_t),
-            None => (ptr::null_mut(), 0),
-        };
-        let timeout = timeout.map_or(0, |timeout| timeout.as_millis() as u32);
+    pub fn rpc_send(&mut self, input: DataTree<'_>, timeout: Duration) -> Result<ManagedData<'b>> {
+        let input = input.into_raw();
+        // TODO: check this fits
+        let timeout = timeout.as_millis() as u32;
 
         let mut output = ptr::null_mut();
-        let mut output_count: size_t = 0;
 
-        let rc = unsafe {
-            ffi::sr_rpc_send(
-                self.sess,
-                path.as_ptr(),
-                input,
-                input_cnt,
-                timeout,
-                &mut output,
-                &mut output_count as *mut size_t,
-            )
-        };
+        let rc = unsafe { ffi::sr_rpc_send_tree(self.sess, input, timeout, &mut output) };
 
         let rc = rc as ffi::sr_error_t::Type;
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            Ok(ValueSlice::from(output, output_count, true))
+            unsafe { Ok(ManagedData::from_raw(self.conn, output)) }
         }
     }
 }
