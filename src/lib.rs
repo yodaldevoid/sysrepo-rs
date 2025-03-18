@@ -744,8 +744,6 @@ impl<'b> Session<'b> {
 
         let res = callback(&sess, sub_id, mod_name, path, event, request_id);
 
-        ffi::sr_release_context(conn.conn);
-
         res.err()
             .map(|e| e.errcode)
             .unwrap_or(ffi::sr_error_t::SR_ERR_OK) as c_int
