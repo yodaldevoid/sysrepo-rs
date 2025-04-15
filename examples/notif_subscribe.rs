@@ -63,7 +63,7 @@ fn main() -> std::result::Result<(), ()> {
 
     // Subscribe for the notifications.
     session
-        .notif_subscribe(
+        .new_notification_subscription(
             &mod_name,
             xpath.map(String::as_str),
             None,

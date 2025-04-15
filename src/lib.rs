@@ -314,8 +314,8 @@ pub struct Session<'a> {
     sess: *mut ffi::sr_session_ctx_t,
 }
 
-impl<'b> Session<'b> {
-    pub unsafe fn from_raw(conn: &'b Connection, sess: *mut ffi::sr_session_ctx_t) -> Self {
+impl<'a> Session<'a> {
+    pub unsafe fn from_raw(conn: &'a Connection, sess: *mut ffi::sr_session_ctx_t) -> Self {
         Self { conn, sess }
     }
 
@@ -323,7 +323,7 @@ impl<'b> Session<'b> {
         self.sess
     }
 
-    pub fn get_context(&self) -> Option<AcquiredContext<'b>> {
+    pub fn get_context(&self) -> Option<AcquiredContext<'a>> {
         self.conn.get_context()
     }
 
@@ -336,7 +336,7 @@ impl<'b> Session<'b> {
         max_depth: Option<NonZero<u32>>,
         timeout: Duration,
         options: GetOptions,
-    ) -> Result<ManagedData<'b>> {
+    ) -> Result<ManagedData<'a>> {
         let xpath = str_to_cstring(xpath)?;
         let max_depth = max_depth.map(NonZero::get).unwrap_or(0);
         // TODO: double check this actually fits
@@ -415,8 +415,8 @@ impl<'b> Session<'b> {
         }
     }
 
-    pub fn notif_subscribe<'a, F>(
-        &'a self,
+    pub fn new_notification_subscription<F>(
+        &self,
         mod_name: &str,
         xpath: Option<&str>,
         start_time: Option<SystemTime>,
@@ -425,6 +425,57 @@ impl<'b> Session<'b> {
         options: SubscriptionOptions,
     ) -> Result<Subscription<'a>>
     where
+        F: FnMut(&Session, u32, NotificationType, &DataTree, SystemTime) + 'static,
+    {
+        let mut subscr = Subscription::from_raw(self.conn, ptr::null_mut());
+        self.notification_subscribe(
+            &mut subscr,
+            mod_name,
+            xpath,
+            start_time,
+            stop_time,
+            callback,
+            options,
+        )
+        .map(|_| subscr)
+    }
+
+    pub fn add_notification_subscription<F>(
+        &self,
+        subscription: &mut Subscription<'a>,
+        mod_name: &str,
+        xpath: Option<&str>,
+        start_time: Option<SystemTime>,
+        stop_time: Option<SystemTime>,
+        callback: F,
+        options: SubscriptionOptions,
+    ) -> Result<()>
+    where
+        F: FnMut(&Session, u32, NotificationType, &DataTree, SystemTime) + 'static,
+    {
+        self.notification_subscribe(
+            subscription,
+            mod_name,
+            xpath,
+            start_time,
+            stop_time,
+            callback,
+            options,
+        )
+    }
+
+    fn notification_subscribe<F>(
+        &self,
+        subscription: &mut Subscription<'a>,
+        mod_name: &str,
+        xpath: Option<&str>,
+        start_time: Option<SystemTime>,
+        stop_time: Option<SystemTime>,
+        callback: F,
+        options: SubscriptionOptions,
+    ) -> Result<()>
+    where
+        // TODO: probably should pass DataNodeRef instead of DataTree
         F: FnMut(&Session, u32, NotificationType, &DataTree, SystemTime) + 'static,
     {
         let mod_name = str_to_cstring(mod_name)?;
@@ -451,7 +502,6 @@ impl<'b> Session<'b> {
             .map(|t| t as *const _)
             .unwrap_or(ptr::null());
 
-        let mut subscr: *mut ffi::sr_subscription_ctx_t = ptr::null_mut();
         let data = Box::into_raw(Box::new(callback));
         let rc = unsafe {
             ffi::sr_notif_subscribe_tree(
@@ -463,7 +513,7 @@ impl<'b> Session<'b> {
                 Some(Session::call_event_notif::<F>),
                 data as *mut _,
                 options.bits(),
-                &mut subscr,
+                &mut subscription.subscr,
             )
         };
 
@@ -471,7 +521,7 @@ impl<'b> Session<'b> {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            Ok(Subscription::from_raw(self, subscr))
+            Ok(())
         }
     }
 
@@ -483,7 +533,6 @@ impl<'b> Session<'b> {
         timestamp: *mut timespec,
         private_data: *mut c_void,
     ) where
-        // TODO: probably should pass DataNodeRef instead of DataTree
         F: FnMut(&Session, u32, NotificationType, &DataTree, SystemTime),
     {
         let callback_ptr = private_data as *mut F;
@@ -508,8 +557,8 @@ impl<'b> Session<'b> {
         ffi::sr_release_context(conn.conn);
     }
 
-    pub fn rpc_subscribe<'a, F>(
-        &'a self,
+    pub fn new_rpc_subscription<F>(
+        &self,
         xpath: &str,
         callback: F,
         priority: u32,
@@ -518,7 +567,36 @@ impl<'b> Session<'b> {
     where
         F: FnMut(&Session, u32, &str, &DataTree, Event, u32, &mut DataTree) -> Result<()> + 'static,
     {
-        let mut subscr: *mut ffi::sr_subscription_ctx_t = ptr::null_mut();
+        let mut subscr = Subscription::from_raw(self.conn, ptr::null_mut());
+        self.rpc_subscribe(&mut subscr, xpath, callback, priority, options)
+            .map(|_| subscr)
+    }
+
+    pub fn add_rpc_subscription<F>(
+        &self,
+        subscription: &mut Subscription<'a>,
+        xpath: &str,
+        callback: F,
+        priority: u32,
+        options: SubscriptionOptions,
+    ) -> Result<()>
+    where
+        F: FnMut(&Session, u32, &str, &DataTree, Event, u32, &mut DataTree) -> Result<()> + 'static,
+    {
+        self.rpc_subscribe(subscription, xpath, callback, priority, options)
+    }
+
+    fn rpc_subscribe<F>(
+        &self,
+        subscription: &mut Subscription<'a>,
+        xpath: &str,
+        callback: F,
+        priority: u32,
+        options: SubscriptionOptions,
+    ) -> Result<()>
+    where
+        F: FnMut(&Session, u32, &str, &DataTree, Event, u32, &mut DataTree) -> Result<()> + 'static,
+    {
         let data = Box::into_raw(Box::new(callback));
         let xpath = str_to_cstring(&xpath)?;
 
@@ -530,7 +608,7 @@ impl<'b> Session<'b> {
                 data as *mut _,
                 priority,
                 options.bits(),
-                &mut subscr,
+                &mut subscription.subscr,
             )
         };
 
@@ -538,7 +616,7 @@ impl<'b> Session<'b> {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            Ok(Subscription::from_raw(self, subscr))
+            Ok(())
         }
     }
 
@@ -587,9 +665,8 @@ impl<'b> Session<'b> {
             .unwrap_or(ffi::sr_error_t::SR_ERR_OK) as c_int
     }
 
-    /// Subscribe oper get items.
-    pub fn oper_get_subscribe<'a, F>(
-        &'a self,
+    pub fn new_operational_get_subscription<F>(
+        &self,
         mod_name: &str,
         path: &str,
         callback: F,
@@ -599,7 +676,38 @@ impl<'b> Session<'b> {
         F: FnMut(&Session, u32, &str, &str, Option<&str>, u32, &mut DataTree) -> Result<()>
             + 'static,
     {
-        let mut subscr: *mut ffi::sr_subscription_ctx_t = ptr::null_mut();
+        let mut subscr = Subscription::from_raw(self.conn, ptr::null_mut());
+        self.oper_get_subscribe(&mut subscr, mod_name, path, callback, options)
+            .map(|_| subscr)
+    }
+
+    pub fn add_operational_get_subscription<F>(
+        &self,
+        subscription: &mut Subscription<'a>,
+        mod_name: &str,
+        path: &str,
+        callback: F,
+        options: SubscriptionOptions,
+    ) -> Result<()>
+    where
+        F: FnMut(&Session, u32, &str, &str, Option<&str>, u32, &mut DataTree) -> Result<()>
+            + 'static,
+    {
+        self.oper_get_subscribe(subscription, mod_name, path, callback, options)
+    }
+
+    fn oper_get_subscribe<F>(
+        &self,
+        subscription: &mut Subscription<'a>,
+        mod_name: &str,
+        path: &str,
+        callback: F,
+        options: SubscriptionOptions,
+    ) -> Result<()>
+    where
+        F: FnMut(&Session, u32, &str, &str, Option<&str>, u32, &mut DataTree) -> Result<()>
+            + 'static,
+    {
         let data = Box::into_raw(Box::new(callback));
         let mod_name = str_to_cstring(mod_name)?;
         let path = str_to_cstring(path)?;
@@ -612,7 +720,7 @@ impl<'b> Session<'b> {
                 Some(Session::call_get_items::<F>),
                 data as *mut _,
                 options.bits(),
-                &mut subscr,
+                &mut subscription.subscr,
             )
         };
 
@@ -620,7 +728,7 @@ impl<'b> Session<'b> {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            Ok(Subscription::from_raw(self, subscr))
+            Ok(())
         }
     }
 
@@ -679,8 +787,8 @@ impl<'b> Session<'b> {
             .unwrap_or(ffi::sr_error_t::SR_ERR_OK) as c_int
     }
 
-    pub fn module_change_subscribe<'a, F>(
-        &'a self,
+    pub fn new_module_change_subscription<F>(
+        &self,
         mod_name: &str,
         xpath: Option<&str>,
         callback: F,
@@ -690,7 +798,38 @@ impl<'b> Session<'b> {
     where
         F: FnMut(&Session, u32, &str, Option<&str>, Event, u32) -> Result<()> + 'static,
     {
-        let mut subscr: *mut ffi::sr_subscription_ctx_t = ptr::null_mut();
+        let mut subscr = Subscription::from_raw(self.conn, ptr::null_mut());
+        self.module_change_subscribe(&mut subscr, mod_name, xpath, callback, priority, options)
+            .map(|_| subscr)
+    }
+
+    pub fn add_module_change_subscription<F>(
+        &self,
+        subscription: &mut Subscription<'a>,
+        mod_name: &str,
+        xpath: Option<&str>,
+        callback: F,
+        priority: u32,
+        options: SubscriptionOptions,
+    ) -> Result<()>
+    where
+        F: FnMut(&Session, u32, &str, Option<&str>, Event, u32) -> Result<()> + 'static,
+    {
+        self.module_change_subscribe(subscription, mod_name, xpath, callback, priority, options)
+    }
+
+    fn module_change_subscribe<F>(
+        &self,
+        subscription: &mut Subscription<'a>,
+        mod_name: &str,
+        xpath: Option<&str>,
+        callback: F,
+        priority: u32,
+        options: SubscriptionOptions,
+    ) -> Result<()>
+    where
+        F: FnMut(&Session, u32, &str, Option<&str>, Event, u32) -> Result<()> + 'static,
+    {
         let data = Box::into_raw(Box::new(callback));
         let mod_name = str_to_cstring(mod_name)?;
         let xpath = xpath.map(|p| str_to_cstring(&p)).transpose()?;
@@ -704,7 +843,7 @@ impl<'b> Session<'b> {
                 data as *mut _,
                 priority,
                 options.bits(),
-                &mut subscr,
+                &mut subscription.subscr,
             )
         };
 
@@ -712,7 +851,7 @@ impl<'b> Session<'b> {
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
         } else {
-            Ok(Subscription::from_raw(self, subscr))
+            Ok(())
         }
     }
 
@@ -787,7 +926,7 @@ impl<'b> Session<'b> {
     }
 
     /// Send RPC.
-    pub fn rpc_send(&mut self, input: DataTree<'_>, timeout: Duration) -> Result<ManagedData<'b>> {
+    pub fn rpc_send(&mut self, input: DataTree<'_>, timeout: Duration) -> Result<ManagedData<'a>> {
         let input = input.into_raw();
         // TODO: check this fits
         let timeout = timeout.as_millis() as u32;
@@ -881,13 +1020,13 @@ impl<'a> Deref for ManagedDataTree<'a> {
 
 pub struct Subscription<'a> {
     subscr: *mut ffi::sr_subscription_ctx_t,
-    _sess: &'a Session<'a>,
+    _conn: &'a Connection,
 }
 
 impl<'a> Subscription<'a> {
-    pub fn from_raw(sess: &'a Session<'a>, subscr: *mut ffi::sr_subscription_ctx_t) -> Self {
+    pub fn from_raw(conn: &'a Connection, subscr: *mut ffi::sr_subscription_ctx_t) -> Self {
         Self {
-            _sess: sess,
+            _conn: conn,
             subscr,
         }
     }

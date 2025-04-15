@@ -155,7 +155,7 @@ fn main() -> std::result::Result<(), ()> {
 
     // Subscribe for changes in running config.
     let _subscription = session
-        .module_change_subscribe(&mod_name, xpath, module_change_cb, 0, Default::default())
+        .new_module_change_subscription(&mod_name, xpath, module_change_cb, 0, Default::default())
         .map_err(|_| ())?;
 
     println!("\n\n ========== LISTENING FOR CHANGES ==========\n");

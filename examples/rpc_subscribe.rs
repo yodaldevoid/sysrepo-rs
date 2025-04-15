@@ -67,7 +67,7 @@ fn main() -> std::result::Result<(), ()> {
 
     // Subscribe for the RPC.
     session
-        .rpc_subscribe(&path, f, 0, Default::default())
+        .new_rpc_subscription(&path, f, 0, Default::default())
         .map_err(|_| ())?;
 
     println!("\n\n ========== LISTENING FOR NOTIFICATIONS ==========\n");

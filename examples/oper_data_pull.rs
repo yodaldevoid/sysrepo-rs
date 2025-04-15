@@ -71,7 +71,7 @@ fn main() -> std::result::Result<(), ()> {
 
     // Subscribe for the providing the operational data.
     session
-        .oper_get_subscribe(&mod_name, &path, dp_get_items_cb, Default::default())
+        .new_operational_get_subscription(&mod_name, &path, dp_get_items_cb, Default::default())
         .map_err(|_| ())?;
 
     println!("\n\n ========== LISTENING FOR REQUESTS ==========\n");
