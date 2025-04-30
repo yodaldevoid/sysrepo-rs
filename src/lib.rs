@@ -380,7 +380,7 @@ impl<'a> Session<'a> {
             Some(orig) => Some(str_to_cstring(orig)?),
             None => None,
         };
-        let origin_ptr = origin.map_or(ptr::null(), |orig| orig.as_ptr());
+        let origin_ptr = origin.as_deref().map_or(ptr::null(), |orig| orig.as_ptr());
 
         let rc = unsafe {
             ffi::sr_set_item_str(
@@ -483,7 +483,7 @@ impl<'a> Session<'a> {
             Some(path) => Some(str_to_cstring(path)?),
             None => None,
         };
-        let xpath_ptr = xpath.map_or(ptr::null(), |xpath| xpath.as_ptr());
+        let xpath_ptr = xpath.as_deref().map_or(ptr::null(), |xpath| xpath.as_ptr());
         let into_timespec = |t: SystemTime| {
             let d = t.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
             timespec {
@@ -838,7 +838,7 @@ impl<'a> Session<'a> {
             ffi::sr_module_change_subscribe(
                 self.sess,
                 mod_name.as_ptr(),
-                xpath.map_or(ptr::null(), |p| p.as_ptr()),
+                xpath.as_deref().map_or(ptr::null(), |p| p.as_ptr()),
                 Some(Session::call_module_change::<F>),
                 data as *mut _,
                 priority,
