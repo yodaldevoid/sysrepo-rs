@@ -448,6 +448,19 @@ impl<'a> Session<'a> {
         }
     }
 
+    /// Delete item at given Xpath.
+    pub fn delete_item(&self, path: &str, options: EditOptions) -> Result<()> {
+        let path = str_to_cstring(path)?;
+
+        let rc = unsafe { ffi::sr_delete_item(self.sess, path.as_ptr(), options.bits()) };
+        let rc = rc as ffi::sr_error_t::Type;
+        if rc != ffi::sr_error_t::SR_ERR_OK {
+            Err(Error { errcode: rc })
+        } else {
+            Ok(())
+        }
+    }
+
     /// Apply changes for the session.
     ///
     /// The timeout is rounded to the nearest millisecond.
