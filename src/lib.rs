@@ -357,13 +357,13 @@ impl<'a> Session<'a> {
     }
 
     pub fn datastore(&self) -> Datastore {
-        Datastore::try_from(unsafe {
-            ffi::sr_session_get_ds(self.sess)
-        }).expect("datastore from sr_session_get_ds should match a value from sr_datastore_t")
+        Datastore::try_from(unsafe { ffi::sr_session_get_ds(self.sess) })
+            .expect("datastore from sr_session_get_ds should match a value from sr_datastore_t")
     }
 
     pub fn switch_datastore(&mut self, datastore: Datastore) -> Result<()> {
-        let rc = unsafe { ffi::sr_session_switch_ds(self.sess, datastore as ffi::sr_datastore_t::Type) };
+        let rc =
+            unsafe { ffi::sr_session_switch_ds(self.sess, datastore as ffi::sr_datastore_t::Type) };
         let rc = rc as ffi::sr_error_t::Type;
         if rc != ffi::sr_error_t::SR_ERR_OK {
             Err(Error { errcode: rc })
