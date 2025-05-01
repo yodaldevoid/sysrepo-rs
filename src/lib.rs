@@ -69,6 +69,8 @@ pub enum Datastore {
     Running = ffi::sr_datastore_t::SR_DS_RUNNING as isize,
     Candidate = ffi::sr_datastore_t::SR_DS_CANDIDATE as isize,
     Operational = ffi::sr_datastore_t::SR_DS_OPERATIONAL as isize,
+    // Available with sysrepo >= 2.2.60
+    FactoryDefault = ffi::sr_datastore_t::SR_DS_FACTORY_DEFAULT as isize,
 }
 
 bitflags! {
@@ -80,6 +82,11 @@ bitflags! {
         const NO_SUBS = ffi::sr_get_oper_flag_t::SR_OPER_NO_SUBS;
         const NO_STORED = ffi::sr_get_oper_flag_t::SR_OPER_NO_STORED;
         const WITH_ORIGIN = ffi::sr_get_oper_flag_t::SR_OPER_WITH_ORIGIN;
+        // Available with sysrepo >= 2.2.12
+        // Prior to sysrepo 2.2.105 was known as as NO_CACHED
+        const NO_POLL_CACHED = ffi::sr_get_oper_flag_t::SR_OPER_NO_POLL_CACHED;
+        // Available with sysrepo >= 2.2.105
+        const NO_RUN_CACHED = ffi::sr_get_oper_flag_t::SR_OPER_NO_RUN_CACHED;
         const NO_FILTER = ffi::sr_get_flag_t::SR_GET_NO_FILTER;
     }
 }
@@ -116,6 +123,14 @@ bitflags! {
         const ENABLED = ffi::sr_subscr_flag_t::SR_SUBSCR_ENABLED;
         const UPDATE = ffi::sr_subscr_flag_t::SR_SUBSCR_UPDATE;
         const OPER_MERGE = ffi::sr_subscr_flag_t::SR_SUBSCR_OPER_MERGE;
+        // Available with sysrepo >= 2.0.41
+        const THREAD_SUSPEND = ffi::sr_subscr_flag_t::SR_SUBSCR_THREAD_SUSPEND,
+        // Available with sysrepo >= 2.2.12
+        const OPER_POLL_DIFF = ffi::sr_subscr_flag_t::SR_SUBSCR_OPER_POLL_DIFF,
+        // Available with sysrepo >= 2.2.150
+        const FILTER_ORIG = ffi::sr_subscr_flag_t::SR_SUBSCR_FILTER_ORIG,
+        // Available with sysrepo >= 3.3.10
+        const CHANGE_ALL_MODULES = ffi::sr_subscr_flag_t::SR_SUBSCR_CHANGE_ALL_MODULES,
     }
 }
 
@@ -174,6 +189,8 @@ pub enum NotificationType {
     Modified = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_MODIFIED as isize,
     Suspended = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED as isize,
     Resumed = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED as isize,
+    // Available with sysrepo >= 2.2.105
+    StopTime = ffi::sr_ev_notif_type_t::SR_EV_STOP_TIME as isize,
 }
 
 impl TryFrom<ffi::sr_ev_notif_type_t::Type> for NotificationType {
@@ -190,6 +207,7 @@ impl TryFrom<ffi::sr_ev_notif_type_t::Type> for NotificationType {
             ffi::sr_ev_notif_type_t::SR_EV_NOTIF_MODIFIED => Ok(NotificationType::Modified),
             ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED => Ok(NotificationType::Suspended),
             ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED => Ok(NotificationType::Resumed),
+            ffi::sr_ev_notif_type_t::SR_EV_STOP_TIME => Ok(NotificationType::StopTime),
             _ => Err("Invalid NotificationType"),
         }
     }
