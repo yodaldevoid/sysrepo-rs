@@ -182,6 +182,8 @@ pub enum NotificationType {
     Modified = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_MODIFIED as isize,
     Suspended = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED as isize,
     Resumed = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED as isize,
+    // Available with sysrepo >= 2.2.105
+    StopTime = ffi::sr_ev_notif_type_t::SR_EV_STOP_TIME as isize,
 }
 
 impl TryFrom<ffi::sr_ev_notif_type_t::Type> for NotificationType {
@@ -198,6 +200,7 @@ impl TryFrom<ffi::sr_ev_notif_type_t::Type> for NotificationType {
             ffi::sr_ev_notif_type_t::SR_EV_NOTIF_MODIFIED => Ok(NotificationType::Modified),
             ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED => Ok(NotificationType::Suspended),
             ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED => Ok(NotificationType::Resumed),
+            ffi::sr_ev_notif_type_t::SR_EV_STOP_TIME => Ok(NotificationType::StopTime),
             _ => Err("Invalid NotificationType"),
         }
     }
