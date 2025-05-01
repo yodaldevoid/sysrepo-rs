@@ -82,6 +82,11 @@ bitflags! {
         const NO_SUBS = ffi::sr_get_oper_flag_t::SR_OPER_NO_SUBS;
         const NO_STORED = ffi::sr_get_oper_flag_t::SR_OPER_NO_STORED;
         const WITH_ORIGIN = ffi::sr_get_oper_flag_t::SR_OPER_WITH_ORIGIN;
+        // Available with sysrepo >= 2.2.12
+        // Prior to sysrepo 2.2.105 was known as as NO_CACHED
+        const NO_POLL_CACHED = ffi::sr_get_oper_flag_t::SR_OPER_NO_POLL_CACHED;
+        // Available with sysrepo >= 2.2.105
+        const NO_RUN_CACHED = ffi::sr_get_oper_flag_t::SR_OPER_NO_RUN_CACHED;
         const NO_FILTER = ffi::sr_get_flag_t::SR_GET_NO_FILTER;
     }
 }
