@@ -139,13 +139,13 @@ bitflags! {
         const UPDATE = ffi::sr_subscr_flag_t::SR_SUBSCR_UPDATE;
         const OPER_MERGE = ffi::sr_subscr_flag_t::SR_SUBSCR_OPER_MERGE;
         // Available with sysrepo >= 2.0.41
-        const THREAD_SUSPEND = ffi::sr_subscr_flag_t::SR_SUBSCR_THREAD_SUSPEND,
+        const THREAD_SUSPEND = ffi::sr_subscr_flag_t::SR_SUBSCR_THREAD_SUSPEND;
         // Available with sysrepo >= 2.2.12
-        const OPER_POLL_DIFF = ffi::sr_subscr_flag_t::SR_SUBSCR_OPER_POLL_DIFF,
+        const OPER_POLL_DIFF = ffi::sr_subscr_flag_t::SR_SUBSCR_OPER_POLL_DIFF;
         // Available with sysrepo >= 2.2.150
-        const FILTER_ORIG = ffi::sr_subscr_flag_t::SR_SUBSCR_FILTER_ORIG,
+        const FILTER_ORIG = ffi::sr_subscr_flag_t::SR_SUBSCR_FILTER_ORIG;
         // Available with sysrepo >= 3.3.10
-        const CHANGE_ALL_MODULES = ffi::sr_subscr_flag_t::SR_SUBSCR_CHANGE_ALL_MODULES,
+        const CHANGE_ALL_MODULES = ffi::sr_subscr_flag_t::SR_SUBSCR_CHANGE_ALL_MODULES;
     }
 }
 
@@ -205,7 +205,7 @@ pub enum NotificationType {
     Suspended = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED as isize,
     Resumed = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED as isize,
     // Available with sysrepo >= 2.2.105
-    StopTime = ffi::sr_ev_notif_type_t::SR_EV_STOP_TIME as isize,
+    StopTime = ffi::sr_ev_notif_type_t::SR_EV_NOTIF_STOP_TIME as isize,
 }
 
 impl TryFrom<ffi::sr_ev_notif_type_t::Type> for NotificationType {
@@ -222,7 +222,7 @@ impl TryFrom<ffi::sr_ev_notif_type_t::Type> for NotificationType {
             ffi::sr_ev_notif_type_t::SR_EV_NOTIF_MODIFIED => Ok(NotificationType::Modified),
             ffi::sr_ev_notif_type_t::SR_EV_NOTIF_SUSPENDED => Ok(NotificationType::Suspended),
             ffi::sr_ev_notif_type_t::SR_EV_NOTIF_RESUMED => Ok(NotificationType::Resumed),
-            ffi::sr_ev_notif_type_t::SR_EV_STOP_TIME => Ok(NotificationType::StopTime),
+            ffi::sr_ev_notif_type_t::SR_EV_NOTIF_STOP_TIME => Ok(NotificationType::StopTime),
             _ => Err("Invalid NotificationType"),
         }
     }
