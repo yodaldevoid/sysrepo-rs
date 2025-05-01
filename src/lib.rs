@@ -116,6 +116,14 @@ bitflags! {
         const ENABLED = ffi::sr_subscr_flag_t::SR_SUBSCR_ENABLED;
         const UPDATE = ffi::sr_subscr_flag_t::SR_SUBSCR_UPDATE;
         const OPER_MERGE = ffi::sr_subscr_flag_t::SR_SUBSCR_OPER_MERGE;
+        // Available with sysrepo >= 2.0.41
+        const THREAD_SUSPEND = ffi::sr_subscr_flag_t::SR_SUBSCR_THREAD_SUSPEND,
+        // Available with sysrepo >= 2.2.12
+        const OPER_POLL_DIFF = ffi::sr_subscr_flag_t::SR_SUBSCR_OPER_POLL_DIFF,
+        // Available with sysrepo >= 2.2.150
+        const FILTER_ORIG = ffi::sr_subscr_flag_t::SR_SUBSCR_FILTER_ORIG,
+        // Available with sysrepo >= 3.3.10
+        const CHANGE_ALL_MODULES = ffi::sr_subscr_flag_t::SR_SUBSCR_CHANGE_ALL_MODULES,
     }
 }
 
