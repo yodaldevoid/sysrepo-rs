@@ -73,6 +73,21 @@ pub enum Datastore {
     FactoryDefault = ffi::sr_datastore_t::SR_DS_FACTORY_DEFAULT as isize,
 }
 
+impl TryFrom<u32> for Datastore {
+    type Error = &'static str;
+
+    fn try_from(t: u32) -> std::result::Result<Self, Self::Error> {
+        match t {
+            ffi::sr_datastore_t::SR_DS_STARTUP => Ok(Datastore::Startup),
+            ffi::sr_datastore_t::SR_DS_RUNNING => Ok(Datastore::Running),
+            ffi::sr_datastore_t::SR_DS_CANDIDATE => Ok(Datastore::Candidate),
+            ffi::sr_datastore_t::SR_DS_OPERATIONAL => Ok(Datastore::Operational),
+            ffi::sr_datastore_t::SR_DS_FACTORY_DEFAULT => Ok(Datastore::FactoryDefault),
+            _ => Err("Invalid Datastore"),
+        }
+    }
+}
+
 bitflags! {
     #[repr(transparent)]
     #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -339,6 +354,22 @@ impl<'a> Session<'a> {
 
     pub fn into_raw(self) -> *mut ffi::sr_session_ctx_t {
         self.sess
+    }
+
+    pub fn datastore(&self) -> Datastore {
+        Datastore::try_from(unsafe {
+            ffi::sr_session_get_ds(self.sess)
+        }).expect("datastore from sr_session_get_ds should match a value from sr_datastore_t")
+    }
+
+    pub fn switch_datastore(&mut self, datastore: Datastore) -> Result<()> {
+        let rc = unsafe { ffi::sr_session_switch_ds(self.sess, datastore as ffi::sr_datastore_t::Type) };
+        let rc = rc as ffi::sr_error_t::Type;
+        if rc != ffi::sr_error_t::SR_ERR_OK {
+            Err(Error { errcode: rc })
+        } else {
+            Ok(())
+        }
     }
 
     pub fn get_context(&self) -> Option<AcquiredContext<'a>> {
