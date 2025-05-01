@@ -368,7 +368,7 @@ impl<'a> Session<'a> {
 
     /// Set string item to given Xpath.
     pub fn set_item_str(
-        &mut self,
+        &self,
         path: &str,
         value: &str,
         origin: Option<&str>,
