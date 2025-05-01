@@ -69,6 +69,8 @@ pub enum Datastore {
     Running = ffi::sr_datastore_t::SR_DS_RUNNING as isize,
     Candidate = ffi::sr_datastore_t::SR_DS_CANDIDATE as isize,
     Operational = ffi::sr_datastore_t::SR_DS_OPERATIONAL as isize,
+    // Available with sysrepo >= 2.2.60
+    FactoryDefault = ffi::sr_datastore_t::SR_DS_FACTORY_DEFAULT as isize,
 }
 
 bitflags! {
