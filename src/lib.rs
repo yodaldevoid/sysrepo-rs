@@ -25,7 +25,7 @@ use yang::utils::Binding;
 /// A convenience wrapper around `Result` for `sysrepo_rs::Error`.
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Error {
     pub errcode: ffi::sr_error_t::Type,
 }
