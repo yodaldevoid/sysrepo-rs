@@ -477,6 +477,39 @@ impl<'a> Session<'a> {
         }
     }
 
+    /// The timeout is rounded to the nearest millisecond.
+    pub fn copy_config(
+        &mut self,
+        mod_name: Option<&str>,
+        datastore: Datastore,
+        timeout: Duration,
+    ) -> Result<()> {
+        // TODO: double check that the duration is short enough
+        let timeout_ms = timeout.as_millis() as u32;
+        let mod_name = match mod_name {
+            Some(path) => Some(str_to_cstring(path)?),
+            None => None,
+        };
+        let mod_name = mod_name
+            .as_deref()
+            .map_or(ptr::null(), |mod_name| mod_name.as_ptr());
+
+        let rc = unsafe {
+            ffi::sr_copy_config(
+                self.sess,
+                mod_name,
+                datastore as ffi::sr_datastore_t::Type,
+                timeout_ms,
+            )
+        };
+        let rc = rc as ffi::sr_error_t::Type;
+        if rc != ffi::sr_error_t::SR_ERR_OK {
+            Err(Error { errcode: rc })
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn new_notification_subscription<F>(
         &self,
         mod_name: &str,
