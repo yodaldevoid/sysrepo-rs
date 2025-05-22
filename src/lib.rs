@@ -8,6 +8,7 @@ use std::num::NonZero;
 use std::ops::Deref;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 #[cfg(feature = "yang2")]
@@ -46,6 +47,21 @@ pub enum LogLevel {
     Warn = ffi::sr_log_level_t::SR_LL_WRN as isize,
     Info = ffi::sr_log_level_t::SR_LL_INF as isize,
     Debug = ffi::sr_log_level_t::SR_LL_DBG as isize,
+}
+
+impl TryFrom<u32> for LogLevel {
+    type Error = &'static str;
+
+    fn try_from(t: u32) -> std::result::Result<Self, &'static str> {
+        match t {
+            ffi::sr_log_level_t::SR_LL_NONE => Ok(LogLevel::None),
+            ffi::sr_log_level_t::SR_LL_ERR => Ok(LogLevel::Error),
+            ffi::sr_log_level_t::SR_LL_WRN => Ok(LogLevel::Warn),
+            ffi::sr_log_level_t::SR_LL_INF => Ok(LogLevel::Info),
+            ffi::sr_log_level_t::SR_LL_DBG => Ok(LogLevel::Debug),
+            _ => Err("Invalid LogLevel"),
+        }
+    }
 }
 
 bitflags! {
@@ -228,21 +244,60 @@ impl TryFrom<ffi::sr_ev_notif_type_t::Type> for NotificationType {
     }
 }
 
+/// Get logging level for logging to the standard error stream.
+pub fn stderr_log_level() -> LogLevel {
+    LogLevel::try_from(unsafe { ffi::sr_log_get_stderr() })
+        .expect("log level from sr_log_get_stderr should match a value from sr_log_level_t")
+}
+
 /// Set logging level for logging to the standard error stream.
-pub fn log_stderr(log_level: LogLevel) {
+pub fn set_stderr_log_level(log_level: LogLevel) {
     unsafe {
         ffi::sr_log_stderr(log_level as ffi::sr_log_level_t::Type);
     }
 }
 
+/// Get logging level for logging to syslog.
+pub fn syslog_log_level() -> LogLevel {
+    LogLevel::try_from(unsafe { ffi::sr_log_get_syslog() })
+        .expect("log level from sr_log_get_syslog should match a value from sr_log_level_t")
+}
+
 /// Set logging level for logging to syslog.
-pub fn log_syslog(app_name: &str, log_level: LogLevel) -> Result<()> {
-    let app_name = str_to_cstring(app_name)?;
+///
+/// If app_name is None, "sysrepo" is used.
+pub fn set_syslog_log_level(log_level: LogLevel, app_name: Option<&str>) -> Result<()> {
+    let app_name = match app_name {
+        Some(orig) => Some(str_to_cstring(orig)?),
+        None => None,
+    };
+    let app_name_ptr = app_name
+        .as_deref()
+        .map_or(ptr::null(), |orig| orig.as_ptr());
     unsafe {
-        ffi::sr_log_syslog(app_name.as_ptr(), log_level as ffi::sr_log_level_t::Type);
+        ffi::sr_log_syslog(app_name_ptr, log_level as ffi::sr_log_level_t::Type);
     }
 
     Ok(())
+}
+
+/// Set callback that will be called when a log entry would be populated.
+pub fn set_log_callback(callback: Option<fn(LogLevel, &str)>) {
+    static CALLBACK: Mutex<Option<fn(LogLevel, &str)>> = Mutex::new(None);
+
+    extern "C" fn log_cb(level: ffi::sr_log_level_t::Type, message: *const c_char) {
+        if let Some(cb) = CALLBACK.lock().ok().unwrap().as_ref() {
+            let level = LogLevel::try_from(level).unwrap();
+            assert!(!message.is_null());
+            let message = unsafe { CStr::from_ptr(message) }.to_str().unwrap();
+            cb(level, message);
+        }
+    }
+
+    *CALLBACK.lock().unwrap() = callback;
+    unsafe {
+        ffi::sr_log_set_cb(Some(log_cb));
+    }
 }
 
 /// Do not use *nix's fork(2) after creating a connection.

@@ -27,7 +27,7 @@ fn main() -> std::result::Result<(), ()> {
     println!("Application will subscribe \"{}\" RPC.", path);
 
     // Turn logging on.
-    log_stderr(LogLevel::Warn);
+    set_stderr_log_level(LogLevel::Warn);
 
     // Connect to sysrepo.
     let connection = Connection::new(Default::default()).map_err(|_| ())?;
