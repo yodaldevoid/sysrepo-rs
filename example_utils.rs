@@ -13,6 +13,7 @@ pub fn datastore_to_str(ds: &Datastore) -> &str {
         Datastore::Running => "running",
         Datastore::Candidate => "candidate",
         Datastore::Operational => "operational",
+        Datastore::FactoryDefault => "factory-default",
     }
 }
 
@@ -23,6 +24,7 @@ pub fn str_to_datastore(s: &str) -> std::result::Result<Datastore, ()> {
         "running" => Ok(Datastore::Running),
         "candidate" => Ok(Datastore::Candidate),
         "operational" => Ok(Datastore::Operational),
+        "factory-default" => Ok(Datastore::FactoryDefault),
         _ => Err(()),
     }
 }
