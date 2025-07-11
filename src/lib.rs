@@ -641,16 +641,10 @@ impl<'a> Session<'a> {
                 tv_nsec: d.subsec_nanos() as _,
             }
         };
-        let start_time = start_time
-            .map(into_timespec)
-            .as_ref()
-            .map(|t| t as *const _)
-            .unwrap_or(ptr::null());
-        let stop_time = stop_time
-            .map(into_timespec)
-            .as_ref()
-            .map(|t| t as *const _)
-            .unwrap_or(ptr::null());
+        let start_time = start_time.map(into_timespec);
+        let start_time = start_time.as_ref().map_or(ptr::null(), |t| t as *const _);
+        let stop_time = stop_time.map(into_timespec);
+        let stop_time = stop_time.as_ref().map_or(ptr::null(), |t| t as *const _);
 
         let data = Box::into_raw(Box::new(callback));
         let rc = unsafe {
