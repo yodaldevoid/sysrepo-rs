@@ -1098,14 +1098,16 @@ impl<'a> Session<'a> {
     }
 
     /// Send RPC.
-    pub fn rpc_send(&mut self, input: DataTree<'_>, timeout: Duration) -> Result<ManagedData<'a>> {
-        let input = input.into_raw();
+    pub fn rpc_send(&mut self, input: &DataTree<'_>, timeout: Duration) -> Result<ManagedData<'a>> {
         // TODO: check this fits
         let timeout = timeout.as_millis() as u32;
+        let input = input.reference().ok_or(Error {
+            errcode: ffi::sr_error_t::SR_ERR_INVAL_ARG,
+        })?;
 
         let mut output = ptr::null_mut();
 
-        let rc = unsafe { ffi::sr_rpc_send_tree(self.sess, input, timeout, &mut output) };
+        let rc = unsafe { ffi::sr_rpc_send_tree(self.sess, input.as_raw(), timeout, &mut output) };
 
         let rc = rc as ffi::sr_error_t::Type;
         if rc != ffi::sr_error_t::SR_ERR_OK {

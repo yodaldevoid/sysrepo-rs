@@ -42,7 +42,7 @@ fn main() -> std::result::Result<(), ()> {
         println!("Creating RPC \"{}\" failed.", path);
         return Err(());
     }
-    let data = session.rpc_send(rpc, Default::default()).map_err(|_| ())?;
+    let data = session.rpc_send(&rpc, Default::default()).map_err(|_| ())?;
 
     println!("\n ========== RECEIVED OUTPUT: ==========\n");
     for node in data.tree().traverse() {
