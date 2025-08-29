@@ -468,8 +468,9 @@ impl<'a> Session<'a> {
     ) -> Result<ManagedData<'a>> {
         let xpath = str_to_cstring(xpath)?;
         let max_depth = max_depth.map(NonZero::get).unwrap_or(0);
-        // TODO: double check this actually fits
-        let timeout_ms = timeout.as_millis() as u32;
+        let timeout_ms = timeout.as_millis().try_into().map_err(|_| Error {
+            errcode: ffi::sr_error_t::SR_ERR_INVAL_ARG,
+        })?;
         let mut data: *mut ffi::sr_data_t = ptr::null_mut();
 
         let rc = unsafe {
@@ -545,8 +546,9 @@ impl<'a> Session<'a> {
     ///
     /// The timeout is rounded to the nearest millisecond.
     pub fn apply_changes(&mut self, timeout: Duration) -> Result<()> {
-        // TODO: double check that the duration is short enough
-        let timeout_ms = timeout.as_millis() as u32;
+        let timeout_ms = timeout.as_millis().try_into().map_err(|_| Error {
+            errcode: ffi::sr_error_t::SR_ERR_INVAL_ARG,
+        })?;
 
         let rc = unsafe { ffi::sr_apply_changes(self.sess, timeout_ms) };
         let rc = rc as ffi::sr_error_t::Type;
@@ -564,8 +566,9 @@ impl<'a> Session<'a> {
         datastore: Datastore,
         timeout: Duration,
     ) -> Result<()> {
-        // TODO: double check that the duration is short enough
-        let timeout_ms = timeout.as_millis() as u32;
+        let timeout_ms = timeout.as_millis().try_into().map_err(|_| Error {
+            errcode: ffi::sr_error_t::SR_ERR_INVAL_ARG,
+        })?;
         let mod_name = match mod_name {
             Some(path) => Some(str_to_cstring(path)?),
             None => None,
@@ -1076,7 +1079,11 @@ impl<'a> Session<'a> {
 
     /// Send event notify tree.
     pub fn notif_send(&mut self, notif: &DataTree, timeout: Option<Duration>) -> Result<()> {
-        let timeout_ms = timeout.map_or(0, |t| t.as_millis() as u32);
+        let timeout_ms = timeout
+            .map_or(Ok(0), |t| t.as_millis().try_into())
+            .map_err(|_| Error {
+                errcode: ffi::sr_error_t::SR_ERR_INVAL_ARG,
+            })?;
         let node = notif.reference().ok_or(Error {
             errcode: ffi::sr_error_t::SR_ERR_INVAL_ARG,
         })?;
@@ -1099,15 +1106,17 @@ impl<'a> Session<'a> {
 
     /// Send RPC.
     pub fn rpc_send(&mut self, input: &DataTree<'_>, timeout: Duration) -> Result<ManagedData<'a>> {
-        // TODO: check this fits
-        let timeout = timeout.as_millis() as u32;
+        let timeout_ms = timeout.as_millis().try_into().map_err(|_| Error {
+            errcode: ffi::sr_error_t::SR_ERR_INVAL_ARG,
+        })?;
         let input = input.reference().ok_or(Error {
             errcode: ffi::sr_error_t::SR_ERR_INVAL_ARG,
         })?;
 
         let mut output = ptr::null_mut();
 
-        let rc = unsafe { ffi::sr_rpc_send_tree(self.sess, input.as_raw(), timeout, &mut output) };
+        let rc =
+            unsafe { ffi::sr_rpc_send_tree(self.sess, input.as_raw(), timeout_ms, &mut output) };
 
         let rc = rc as ffi::sr_error_t::Type;
         if rc != ffi::sr_error_t::SR_ERR_OK {
