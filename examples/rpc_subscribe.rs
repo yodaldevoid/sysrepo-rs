@@ -42,7 +42,7 @@ fn main() -> std::result::Result<(), ()> {
              _sub_id: u32,
              path: &str,
              input: &DataTree,
-             _event: Event,
+             _event: RpcEvent,
              _request_id: u32,
              output: &mut DataTree| {
         println!(

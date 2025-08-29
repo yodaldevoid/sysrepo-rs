@@ -119,7 +119,7 @@ fn main() -> std::result::Result<(), ()> {
                             _sub_id: u32,
                             module_name: &str,
                             xpath: Option<&str>,
-                            event: Event,
+                            event: ModuleChangeEvent,
                             _request_id: u32| {
         println!(
             "\n\n ========== EVENT {} CHANGES: ====================================\n",
@@ -145,7 +145,7 @@ fn main() -> std::result::Result<(), ()> {
 
         println!("\n ========== END OF CHANGES =======================================");
 
-        if event == Event::Done {
+        if event == ModuleChangeEvent::Done {
             println!("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n");
             print_current_config(&session, module_name)?;
         }

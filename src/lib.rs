@@ -172,40 +172,65 @@ impl Default for SubscriptionOptions {
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum Event {
+pub enum ModuleChangeEvent {
     Update = ffi::sr_event_t::SR_EV_UPDATE as isize,
     Change = ffi::sr_event_t::SR_EV_CHANGE as isize,
     Done = ffi::sr_event_t::SR_EV_DONE as isize,
     Abort = ffi::sr_event_t::SR_EV_ABORT as isize,
     Enabled = ffi::sr_event_t::SR_EV_ENABLED as isize,
-    Rpc = ffi::sr_event_t::SR_EV_RPC as isize,
 }
 
-impl TryFrom<u32> for Event {
+impl TryFrom<u32> for ModuleChangeEvent {
     type Error = &'static str;
 
     fn try_from(t: u32) -> std::result::Result<Self, Self::Error> {
         match t {
-            ffi::sr_event_t::SR_EV_UPDATE => Ok(Event::Update),
-            ffi::sr_event_t::SR_EV_CHANGE => Ok(Event::Change),
-            ffi::sr_event_t::SR_EV_DONE => Ok(Event::Done),
-            ffi::sr_event_t::SR_EV_ABORT => Ok(Event::Abort),
-            ffi::sr_event_t::SR_EV_ENABLED => Ok(Event::Enabled),
-            ffi::sr_event_t::SR_EV_RPC => Ok(Event::Rpc),
-            _ => Err("Invalid Event"),
+            ffi::sr_event_t::SR_EV_UPDATE => Ok(Self::Update),
+            ffi::sr_event_t::SR_EV_CHANGE => Ok(Self::Change),
+            ffi::sr_event_t::SR_EV_DONE => Ok(Self::Done),
+            ffi::sr_event_t::SR_EV_ABORT => Ok(Self::Abort),
+            ffi::sr_event_t::SR_EV_ENABLED => Ok(Self::Enabled),
+            _ => Err("Invalid Module Change Event"),
         }
     }
 }
 
-impl fmt::Display for Event {
+impl fmt::Display for ModuleChangeEvent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let s = match self {
-            Event::Update => "Update",
-            Event::Change => "Change",
-            Event::Done => "Done",
-            Event::Abort => "Abort",
-            Event::Enabled => "Enabled",
-            Event::Rpc => "RPC",
+            Self::Update => "Update",
+            Self::Change => "Change",
+            Self::Done => "Done",
+            Self::Abort => "Abort",
+            Self::Enabled => "Enabled",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum RpcEvent {
+    Rpc = ffi::sr_event_t::SR_EV_RPC as isize,
+    Abort = ffi::sr_event_t::SR_EV_ABORT as isize,
+}
+
+impl TryFrom<u32> for RpcEvent {
+    type Error = &'static str;
+
+    fn try_from(t: u32) -> std::result::Result<Self, Self::Error> {
+        match t {
+            ffi::sr_event_t::SR_EV_RPC => Ok(Self::Rpc),
+            ffi::sr_event_t::SR_EV_ABORT => Ok(Self::Abort),
+            _ => Err("Invalid RPC Event"),
+        }
+    }
+}
+
+impl fmt::Display for RpcEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match self {
+            Self::Rpc => "RPC",
+            Self::Abort => "Abort",
         };
         write!(f, "{}", s)
     }
@@ -709,7 +734,8 @@ impl<'a> Session<'a> {
         options: SubscriptionOptions,
     ) -> Result<Subscription<'a>>
     where
-        F: FnMut(&Session, u32, &str, &DataTree, Event, u32, &mut DataTree) -> Result<()> + 'static,
+        F: FnMut(&Session, u32, &str, &DataTree, RpcEvent, u32, &mut DataTree) -> Result<()>
+            + 'static,
     {
         let mut subscr = Subscription::from_raw(self.conn, ptr::null_mut());
         self.rpc_subscribe(&mut subscr, xpath, callback, priority, options)
@@ -725,7 +751,8 @@ impl<'a> Session<'a> {
         options: SubscriptionOptions,
     ) -> Result<()>
     where
-        F: FnMut(&Session, u32, &str, &DataTree, Event, u32, &mut DataTree) -> Result<()> + 'static,
+        F: FnMut(&Session, u32, &str, &DataTree, RpcEvent, u32, &mut DataTree) -> Result<()>
+            + 'static,
     {
         self.rpc_subscribe(subscription, xpath, callback, priority, options)
     }
@@ -739,7 +766,8 @@ impl<'a> Session<'a> {
         options: SubscriptionOptions,
     ) -> Result<()>
     where
-        F: FnMut(&Session, u32, &str, &DataTree, Event, u32, &mut DataTree) -> Result<()> + 'static,
+        F: FnMut(&Session, u32, &str, &DataTree, RpcEvent, u32, &mut DataTree) -> Result<()>
+            + 'static,
     {
         let data = Box::into_raw(Box::new(callback));
         let xpath = str_to_cstring(&xpath)?;
@@ -775,7 +803,7 @@ impl<'a> Session<'a> {
         private_data: *mut c_void,
     ) -> c_int
     where
-        F: FnMut(&Session, u32, &str, &DataTree, Event, u32, &mut DataTree) -> Result<()>,
+        F: FnMut(&Session, u32, &str, &DataTree, RpcEvent, u32, &mut DataTree) -> Result<()>,
     {
         let callback_ptr = private_data as *mut F;
         let callback = &mut *callback_ptr;
@@ -790,7 +818,7 @@ impl<'a> Session<'a> {
         let sess = ManuallyDrop::new(Session::from_raw(&conn, sess));
         let input = ManuallyDrop::new(DataTree::from_raw(&ctx, input as *mut _));
         let mut output = ManuallyDrop::new(DataTree::from_raw(&ctx, output as *mut _));
-        let event = Event::try_from(event).expect("Convert error");
+        let event = RpcEvent::try_from(event).expect("Convert error");
 
         let res = callback(
             &sess,
@@ -940,7 +968,7 @@ impl<'a> Session<'a> {
         options: SubscriptionOptions,
     ) -> Result<Subscription<'a>>
     where
-        F: FnMut(&Session, u32, &str, Option<&str>, Event, u32) -> Result<()> + 'static,
+        F: FnMut(&Session, u32, &str, Option<&str>, ModuleChangeEvent, u32) -> Result<()> + 'static,
     {
         let mut subscr = Subscription::from_raw(self.conn, ptr::null_mut());
         self.module_change_subscribe(&mut subscr, mod_name, xpath, callback, priority, options)
@@ -957,7 +985,7 @@ impl<'a> Session<'a> {
         options: SubscriptionOptions,
     ) -> Result<()>
     where
-        F: FnMut(&Session, u32, &str, Option<&str>, Event, u32) -> Result<()> + 'static,
+        F: FnMut(&Session, u32, &str, Option<&str>, ModuleChangeEvent, u32) -> Result<()> + 'static,
     {
         self.module_change_subscribe(subscription, mod_name, xpath, callback, priority, options)
     }
@@ -972,7 +1000,7 @@ impl<'a> Session<'a> {
         options: SubscriptionOptions,
     ) -> Result<()>
     where
-        F: FnMut(&Session, u32, &str, Option<&str>, Event, u32) -> Result<()> + 'static,
+        F: FnMut(&Session, u32, &str, Option<&str>, ModuleChangeEvent, u32) -> Result<()> + 'static,
     {
         let data = Box::into_raw(Box::new(callback));
         let mod_name = str_to_cstring(mod_name)?;
@@ -1009,7 +1037,7 @@ impl<'a> Session<'a> {
         private_data: *mut c_void,
     ) -> c_int
     where
-        F: FnMut(&Session, u32, &str, Option<&str>, Event, u32) -> Result<()>,
+        F: FnMut(&Session, u32, &str, Option<&str>, ModuleChangeEvent, u32) -> Result<()>,
     {
         let callback_ptr = private_data as *mut F;
         let callback = &mut *callback_ptr;
@@ -1020,7 +1048,7 @@ impl<'a> Session<'a> {
         } else {
             Some(CStr::from_ptr(path).to_str().unwrap())
         };
-        let event = Event::try_from(event).expect("Convert error");
+        let event = ModuleChangeEvent::try_from(event).expect("Convert error");
         let conn = ffi::sr_session_get_connection(sess);
         let conn = ManuallyDrop::new(Connection::from_raw(conn));
         let sess = ManuallyDrop::new(Session::from_raw(&conn, sess));
