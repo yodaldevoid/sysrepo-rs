@@ -662,11 +662,22 @@ impl<'a> Session<'a> {
             None => None,
         };
         let xpath_ptr = xpath.as_deref().map_or(ptr::null(), |xpath| xpath.as_ptr());
-        let into_timespec = |t: SystemTime| {
-            let d = t.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
-            timespec {
+        let into_timespec = |t: SystemTime| match t.duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(d) => timespec {
                 tv_sec: d.as_secs() as _,
                 tv_nsec: d.subsec_nanos() as _,
+            },
+            Err(e) => {
+                let d = e.duration();
+                let (secs, nanos) = if d.subsec_nanos() != 0 {
+                    (d.as_secs() + 1, 1_000_000_000 - d.subsec_nanos())
+                } else {
+                    (d.as_secs(), 0)
+                };
+                timespec {
+                    tv_sec: -(secs as i64) as _,
+                    tv_nsec: nanos as _,
+                }
             }
         };
         let start_time = start_time.map(into_timespec);
