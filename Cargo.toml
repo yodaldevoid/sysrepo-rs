@@ -13,16 +13,10 @@ readme = "README.md"
 repository = "https://github.com/sjtakada/sysrepo-rs"
 version = "0.5.0"
 
-[features]
-default = ["yang3"]
-yang2 = ["dep:yang2", "sysrepo-sys/yang2"]
-yang3 = ["dep:yang3", "sysrepo-sys/yang3"]
-
 [dependencies]
 sysrepo-sys = { version = "0.1.0", path = "./sysrepo-sys" }
 libc = "0.2.121"
-yang2 = { version = "0.18", optional = true }
-yang3 = { version = "0.13", optional = true }
+yang5 = "0.1"
 bitflags = "2.6.0"
 
 [dev-dependencies]

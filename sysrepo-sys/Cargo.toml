@@ -16,12 +16,6 @@ version = "0.1.0"
 [build-dependencies]
 bindgen = "0.70.0"
 
-[features]
-default = ["yang3"]
-yang2 = ["dep:libyang2-sys"]
-yang3 = ["dep:libyang3-sys"]
-
 [dependencies]
 libc = "0.2.121"
-libyang2-sys = { version = "0.6", optional = true }
-libyang3-sys = { version = "0.3", optional = true }
+libyang5-sys = "0.1"
