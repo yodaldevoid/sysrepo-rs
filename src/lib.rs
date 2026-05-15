@@ -11,10 +11,7 @@ use std::ptr;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
-#[cfg(feature = "yang2")]
-pub use yang2 as yang;
-#[cfg(feature = "yang3")]
-pub use yang3 as yang;
+pub use yang5 as yang;
 
 use bitflags::bitflags;
 pub use sysrepo_sys as ffi;
@@ -46,6 +43,7 @@ pub enum LogLevel {
     Error = ffi::sr_log_level_t::SR_LL_ERR as isize,
     Warn = ffi::sr_log_level_t::SR_LL_WRN as isize,
     Info = ffi::sr_log_level_t::SR_LL_INF as isize,
+    Verbose = ffi::sr_log_level_t::SR_LL_VRB as isize,
     Debug = ffi::sr_log_level_t::SR_LL_DBG as isize,
 }
 
@@ -58,6 +56,7 @@ impl TryFrom<u32> for LogLevel {
             ffi::sr_log_level_t::SR_LL_ERR => Ok(LogLevel::Error),
             ffi::sr_log_level_t::SR_LL_WRN => Ok(LogLevel::Warn),
             ffi::sr_log_level_t::SR_LL_INF => Ok(LogLevel::Info),
+            ffi::sr_log_level_t::SR_LL_VRB => Ok(LogLevel::Verbose),
             ffi::sr_log_level_t::SR_LL_DBG => Ok(LogLevel::Debug),
             _ => Err("Invalid LogLevel"),
         }
@@ -68,14 +67,26 @@ bitflags! {
     #[repr(transparent)]
     #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
     pub struct ConnectionFlags: ffi::sr_conn_flag_t::Type {
-        const CACHE_RUNNING = ffi::sr_conn_flag_t::SR_CONN_CACHE_RUNNING;
-        const SET_PRIV_PARSED = ffi::sr_conn_flag_t::SR_CONN_CTX_SET_PRIV_PARSED;
     }
 }
 
 impl Default for ConnectionFlags {
     fn default() -> Self {
         ConnectionFlags::empty()
+    }
+}
+
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+    pub struct ContextOptions: ffi::sr_context_flag_t::Type {
+        const SET_PRIV_PARSED = ffi::sr_context_flag_t::SR_CTX_SET_PRIV_PARSED;
+    }
+}
+
+impl Default for ContextOptions {
+    fn default() -> Self {
+        ContextOptions::empty()
     }
 }
 
@@ -322,6 +333,18 @@ pub fn set_log_callback(callback: Option<fn(LogLevel, &str)>) {
     *CALLBACK.lock().unwrap() = callback;
     unsafe {
         ffi::sr_log_set_cb(Some(log_cb));
+    }
+}
+
+pub fn enable_running_datastore_cache(enable: bool) {
+    unsafe {
+        ffi::sr_cache_running(enable.into());
+    }
+}
+
+pub fn set_context_options(options: ContextOptions) {
+    unsafe {
+        ffi::sr_cache_running(options.bits() as _);
     }
 }
 
@@ -1075,7 +1098,7 @@ impl<'a> Session<'a> {
     }
 
     // TODO: only valid in module_change_subscribe callback
-    pub fn get_changes_iter(&self, xpath: &str) -> Result<Changes> {
+    pub fn get_changes_iter(&self, xpath: &str) -> Result<Changes<'_>> {
         let xpath = str_to_cstring(xpath)?;
         let mut it = ptr::null_mut();
         let rc = unsafe { ffi::sr_get_changes_iter(self.sess, xpath.as_ptr(), &mut it) };
