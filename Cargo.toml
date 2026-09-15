@@ -16,11 +16,11 @@ version = "0.5.0"
 [dependencies]
 sysrepo-sys = { version = "0.1.0", path = "./sysrepo-sys" }
 libc = "0.2.121"
-yang5 = "0.1"
+yang5 = "0.4"
 bitflags = "2.6.0"
 
 [dev-dependencies]
-nix = "0.17.0"
+nix = "0.31"
 
 [workspace]
 members = ["sysrepo-sys"]
