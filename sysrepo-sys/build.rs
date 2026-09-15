@@ -13,7 +13,7 @@ fn main() {
         .size_t_is_usize(false)
         .default_enum_style(bindgen::EnumVariation::ModuleConsts)
         .raw_line("use libyang5_sys::*;")
-        .raw_line("use libc::size_t;")
+        .raw_line("use libc::{mode_t, size_t, uid_t};")
         .allowlist_item("sr_.*")
         .allowlist_item("srplg_.*")
         .allowlist_item("SR_.*")
