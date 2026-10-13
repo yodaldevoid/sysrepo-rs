@@ -1443,7 +1443,7 @@ impl<'a> Iterator for ChangesIter<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChangeOperation<'a> {
     Created,
     CreatedLeafListUserOrdered {
