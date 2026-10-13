@@ -115,7 +115,7 @@ fn main() -> std::result::Result<(), ()> {
     println!("\n ========== READING RUNNING CONFIG: ==========\n");
     print_current_config(&session, &mod_name).map_err(|_| ())?;
 
-    let module_change_cb = |session: &Session,
+    let module_change_cb = |session: &ModuleChangeSession,
                             _sub_id: u32,
                             module_name: &str,
                             xpath: Option<&str>,

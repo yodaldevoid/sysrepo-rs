@@ -5,7 +5,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::num::NonZero;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 use std::sync::Mutex;
@@ -1005,7 +1005,15 @@ impl<'a> Session<'a> {
         options: SubscriptionOptions,
     ) -> Result<Subscription<'a>>
     where
-        F: FnMut(&Session, u32, &str, Option<&str>, ModuleChangeEvent, u32) -> Result<()> + 'static,
+        F: FnMut(
+                &ModuleChangeSession,
+                u32,
+                &str,
+                Option<&str>,
+                ModuleChangeEvent,
+                u32,
+            ) -> Result<()>
+            + 'static,
     {
         let mut subscr = Subscription::from_raw(self.conn, ptr::null_mut());
         self.module_change_subscribe(&mut subscr, mod_name, xpath, callback, priority, options)
@@ -1022,7 +1030,15 @@ impl<'a> Session<'a> {
         options: SubscriptionOptions,
     ) -> Result<()>
     where
-        F: FnMut(&Session, u32, &str, Option<&str>, ModuleChangeEvent, u32) -> Result<()> + 'static,
+        F: FnMut(
+                &ModuleChangeSession,
+                u32,
+                &str,
+                Option<&str>,
+                ModuleChangeEvent,
+                u32,
+            ) -> Result<()>
+            + 'static,
     {
         self.module_change_subscribe(subscription, mod_name, xpath, callback, priority, options)
     }
@@ -1037,7 +1053,15 @@ impl<'a> Session<'a> {
         options: SubscriptionOptions,
     ) -> Result<()>
     where
-        F: FnMut(&Session, u32, &str, Option<&str>, ModuleChangeEvent, u32) -> Result<()> + 'static,
+        F: FnMut(
+                &ModuleChangeSession,
+                u32,
+                &str,
+                Option<&str>,
+                ModuleChangeEvent,
+                u32,
+            ) -> Result<()>
+            + 'static,
     {
         let data = Box::into_raw(Box::new(callback));
         let mod_name = str_to_cstring(mod_name)?;
@@ -1074,7 +1098,14 @@ impl<'a> Session<'a> {
         private_data: *mut c_void,
     ) -> c_int
     where
-        F: FnMut(&Session, u32, &str, Option<&str>, ModuleChangeEvent, u32) -> Result<()>,
+        F: FnMut(
+            &ModuleChangeSession,
+            u32,
+            &str,
+            Option<&str>,
+            ModuleChangeEvent,
+            u32,
+        ) -> Result<()>,
     {
         let callback_ptr = private_data as *mut F;
         let callback = &mut *callback_ptr;
@@ -1088,27 +1119,15 @@ impl<'a> Session<'a> {
         let event = ModuleChangeEvent::try_from(event).expect("Convert error");
         let conn = ffi::sr_session_get_connection(sess);
         let conn = ManuallyDrop::new(Connection::from_raw(conn));
-        let sess = ManuallyDrop::new(Session::from_raw(&conn, sess));
+        let sess = ManuallyDrop::new(ModuleChangeSession {
+            inner: Session::from_raw(&conn, sess),
+        });
 
         let res = callback(&sess, sub_id, mod_name, path, event, request_id);
 
         res.err()
             .map(|e| e.errcode)
             .unwrap_or(ffi::sr_error_t::SR_ERR_OK) as c_int
-    }
-
-    // TODO: only valid in module_change_subscribe callback
-    pub fn get_changes_iter(&self, xpath: &str) -> Result<Changes<'_>> {
-        let xpath = str_to_cstring(xpath)?;
-        let mut it = ptr::null_mut();
-        let rc = unsafe { ffi::sr_get_changes_iter(self.sess, xpath.as_ptr(), &mut it) };
-
-        let rc = rc as ffi::sr_error_t::Type;
-        if rc != ffi::sr_error_t::SR_ERR_OK {
-            Err(Error { errcode: rc })
-        } else {
-            Ok(unsafe { Changes::from_raw(self, it) })
-        }
     }
 
     /// Send event notify tree.
@@ -1176,6 +1195,39 @@ impl Drop for Session<'_> {
 }
 
 unsafe impl Send for Session<'_> {}
+
+pub struct ModuleChangeSession<'a> {
+    inner: Session<'a>,
+}
+
+impl ModuleChangeSession<'_> {
+    pub fn get_changes_iter(&self, xpath: &str) -> Result<Changes<'_>> {
+        let xpath = str_to_cstring(xpath)?;
+        let mut it = ptr::null_mut();
+        let rc = unsafe { ffi::sr_get_changes_iter(self.inner.sess, xpath.as_ptr(), &mut it) };
+
+        let rc = rc as ffi::sr_error_t::Type;
+        if rc != ffi::sr_error_t::SR_ERR_OK {
+            Err(Error { errcode: rc })
+        } else {
+            Ok(unsafe { Changes::from_raw(self, it) })
+        }
+    }
+}
+
+impl<'a> Deref for ModuleChangeSession<'a> {
+    type Target = Session<'a>;
+
+    fn deref(&self) -> &Session<'a> {
+        &self.inner
+    }
+}
+
+impl<'a> DerefMut for ModuleChangeSession<'a> {
+    fn deref_mut(&mut self) -> &mut Session<'a> {
+        &mut self.inner
+    }
+}
 
 pub struct ManagedData<'a> {
     ctx: ManuallyDrop<Context>,
@@ -1267,19 +1319,22 @@ unsafe impl Send for Subscription<'_> {}
 unsafe impl Sync for Subscription<'_> {}
 
 pub struct Changes<'a> {
-    sess: &'a Session<'a>,
+    sess: &'a ModuleChangeSession<'a>,
     ctx: ManuallyDrop<Context>,
     iter: *mut ffi::sr_change_iter_t,
 }
 
 impl<'a> Changes<'a> {
-    pub unsafe fn from_raw(sess: &'a Session<'a>, iter: *mut ffi::sr_change_iter_t) -> Self {
+    pub unsafe fn from_raw(
+        sess: &'a ModuleChangeSession<'a>,
+        iter: *mut ffi::sr_change_iter_t,
+    ) -> Self {
         // Aquire the context and then drop it right away.
         // SAFETY: This pointer will be valid as the context read lock continues
         // to be held by the iterator.
         let ctx = unsafe {
-            let ctx = ffi::sr_acquire_context(sess.conn.conn);
-            ffi::sr_release_context(sess.conn.conn);
+            let ctx = ffi::sr_acquire_context(sess.inner.conn.conn);
+            ffi::sr_release_context(sess.inner.conn.conn);
             ManuallyDrop::new(Context::from_raw(&(), ctx as *mut _))
         };
         Self { sess, ctx, iter }
@@ -1287,7 +1342,7 @@ impl<'a> Changes<'a> {
 
     pub fn iter<'b>(&'b self) -> ChangesIter<'b> {
         ChangesIter {
-            sess: self.sess.sess,
+            sess: self.sess.inner.sess,
             ctx: &self.ctx,
             iter: self.iter,
         }
