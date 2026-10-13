@@ -34,7 +34,7 @@ fn main() -> std::result::Result<(), ()> {
     let ctx = connection.get_context().unwrap();
 
     // Start session.
-    let mut session = connection
+    let session = connection
         .start_session(Datastore::Running)
         .map_err(|_| ())?;
 

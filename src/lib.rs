@@ -464,7 +464,7 @@ impl<'a> Session<'a> {
             .expect("datastore from sr_session_get_ds should match a value from sr_datastore_t")
     }
 
-    pub fn switch_datastore(&mut self, datastore: Datastore) -> Result<()> {
+    pub fn switch_datastore(&self, datastore: Datastore) -> Result<()> {
         let rc =
             unsafe { ffi::sr_session_switch_ds(self.sess, datastore as ffi::sr_datastore_t::Type) };
         let rc = rc as ffi::sr_error_t::Type;
@@ -568,7 +568,7 @@ impl<'a> Session<'a> {
     /// Apply changes for the session.
     ///
     /// The timeout is rounded to the nearest millisecond.
-    pub fn apply_changes(&mut self, timeout: Duration) -> Result<()> {
+    pub fn apply_changes(&self, timeout: Duration) -> Result<()> {
         let timeout_ms = timeout.as_millis().try_into().map_err(|_| Error {
             errcode: ffi::sr_error_t::SR_ERR_INVAL_ARG,
         })?;
@@ -584,7 +584,7 @@ impl<'a> Session<'a> {
 
     /// The timeout is rounded to the nearest millisecond.
     pub fn copy_config(
-        &mut self,
+        &self,
         mod_name: Option<&str>,
         datastore: Datastore,
         timeout: Duration,
@@ -1112,7 +1112,7 @@ impl<'a> Session<'a> {
     }
 
     /// Send event notify tree.
-    pub fn notif_send(&mut self, notif: &DataTree, timeout: Option<Duration>) -> Result<()> {
+    pub fn notif_send(&self, notif: &DataTree, timeout: Option<Duration>) -> Result<()> {
         let timeout_ms = timeout
             .map_or(Ok(0), |t| t.as_millis().try_into())
             .map_err(|_| Error {
@@ -1139,7 +1139,7 @@ impl<'a> Session<'a> {
     }
 
     /// Send RPC.
-    pub fn rpc_send(&mut self, input: &DataTree<'_>, timeout: Duration) -> Result<ManagedData<'a>> {
+    pub fn rpc_send(&self, input: &DataTree<'_>, timeout: Duration) -> Result<ManagedData<'a>> {
         let timeout_ms = timeout.as_millis().try_into().map_err(|_| Error {
             errcode: ffi::sr_error_t::SR_ERR_INVAL_ARG,
         })?;
